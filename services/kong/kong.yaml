@@ -90,7 +90,7 @@ plugins:
   - name: rate-limiting
     service: rabbitmq-admin
     config:
-      minute: 10
+      minute: 50
       policy: local
 
   # CORS - restricted to same-origin (Kong gateway IP)
