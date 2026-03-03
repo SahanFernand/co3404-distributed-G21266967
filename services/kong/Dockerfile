@@ -1,5 +1,6 @@
 # Kong API Gateway - Dockerfile
 # Student ID: G21266967
+# HTTPS enabled via Let's Encrypt certificate
 
 FROM kong:3.4
 
@@ -11,6 +12,7 @@ ENV KONG_PROXY_ACCESS_LOG=/dev/stdout
 ENV KONG_ADMIN_ACCESS_LOG=/dev/stdout
 ENV KONG_PROXY_ERROR_LOG=/dev/stderr
 ENV KONG_ADMIN_ERROR_LOG=/dev/stderr
+ENV KONG_PROXY_LISTEN="0.0.0.0:8000, 0.0.0.0:8443 ssl"
 
 EXPOSE 8000 8443 8001
 

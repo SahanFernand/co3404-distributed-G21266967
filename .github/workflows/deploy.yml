@@ -191,9 +191,24 @@ jobs:
             -e OIDC_CLIENT_ID=${{ secrets.OIDC_CLIENT_ID }} \
             -e OIDC_ISSUER=${{ secrets.OIDC_ISSUER }} \
             -e OIDC_SECRET=${{ secrets.OIDC_SECRET }} \
-            -e BASE_URL=http://${{ secrets.KONG_PUBLIC_IP }} \
+            -e BASE_URL=https://g21266967.duckdns.org \
             -e POST_LOGIN_REDIRECT=/moderate-ui \
             ${IMG}/moderate-service:latest
+          EOF
+
+      - name: Setup SSL Certificate (Let's Encrypt)
+        run: |
+          scp -o StrictHostKeyChecking=no ./services/kong/setup-ssl.sh azureuser@${{ secrets.KONG_PUBLIC_IP }}:/home/azureuser/setup-ssl.sh
+          ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.KONG_PUBLIC_IP }} << 'EOF'
+          chmod +x /home/azureuser/setup-ssl.sh
+          DOMAIN="g21266967.duckdns.org"
+          CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
+          # Only run certbot if cert doesn't exist or expires within 30 days
+          if [ ! -f "${CERT_DIR}/fullchain.pem" ] || ! sudo openssl x509 -checkend 2592000 -noout -in "${CERT_DIR}/fullchain.pem" 2>/dev/null; then
+            bash /home/azureuser/setup-ssl.sh
+          else
+            echo "SSL certificate still valid, skipping renewal"
+          fi
           EOF
 
       - name: Deploy Kong Gateway (East Asia)
@@ -202,12 +217,17 @@ jobs:
           ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.KONG_PUBLIC_IP }} << EOF
           docker pull ${IMG}/kong-gateway:latest
           docker rm -f kong 2>/dev/null || true
+          DOMAIN="g21266967.duckdns.org"
+          CERT_DIR="/etc/letsencrypt/live/\${DOMAIN}"
           docker run -d --name kong --restart unless-stopped \
             -p 80:8000 -p 443:8443 \
             --add-host=joke:10.0.1.20 \
             --add-host=rabbitmq:10.0.1.50 \
             --add-host=submit:${{ secrets.SUBMIT_PUBLIC_IP }} \
             --add-host=moderate:${{ secrets.MODERATE_PUBLIC_IP }} \
+            -v /etc/letsencrypt:/etc/letsencrypt:ro \
+            -e KONG_SSL_CERT=\${CERT_DIR}/fullchain.pem \
+            -e KONG_SSL_CERT_KEY=\${CERT_DIR}/privkey.pem \
             ${IMG}/kong-gateway:latest
           EOF
 
@@ -221,8 +241,9 @@ jobs:
           echo "  East Asia:  Kong, Joke (+MySQL+ETL), RabbitMQ"
           echo "  Indonesia Central:  Submit, Moderate"
           echo ""
-          echo "Access URLs:"
-          echo "  Joke UI:     http://${{ secrets.KONG_PUBLIC_IP }}/joke-ui"
-          echo "  Submit UI:   http://${{ secrets.KONG_PUBLIC_IP }}/submit-ui"
-          echo "  Moderate UI: http://${{ secrets.KONG_PUBLIC_IP }}/moderate-ui"
-          echo "  API Docs:    http://${{ secrets.KONG_PUBLIC_IP }}/docs"
+          echo "Access URLs (HTTPS):"
+          echo "  Joke UI:     https://g21266967.duckdns.org/joke-ui"
+          echo "  Submit UI:   https://g21266967.duckdns.org/submit-ui"
+          echo "  Moderate UI: https://g21266967.duckdns.org/moderate-ui"
+          echo "  API Docs:    https://g21266967.duckdns.org/docs"
+          echo "  RabbitMQ:    https://g21266967.duckdns.org/rmq"

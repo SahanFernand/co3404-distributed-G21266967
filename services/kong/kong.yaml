@@ -93,10 +93,12 @@ plugins:
       minute: 50
       policy: local
 
-  # CORS - restricted to same-origin (Kong gateway IP)
+  # CORS - restricted to Kong gateway (domain + IP fallback)
   - name: cors
     config:
       origins:
+        - "https://g21266967.duckdns.org"
+        - "http://g21266967.duckdns.org"
         - "http://20.239.48.46"
         - "https://20.239.48.46"
       methods:
