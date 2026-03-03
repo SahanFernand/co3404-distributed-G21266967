@@ -1,0 +1,190 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: jokedb
+      MYSQL_USER: jokeuser
+      MYSQL_PASSWORD: jokepassword
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - joke-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - mysql
+
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: mongodb
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - joke-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - mongo
+
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./services/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    networks:
+      - joke-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Joke Service
+  joke:
+    build:
+      context: ./services/joke
+      dockerfile: Dockerfile
+    container_name: joke
+    environment:
+      - DB_TYPE=${DB_TYPE:-mysql}
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=jokeuser
+      - DB_PASSWORD=jokepassword
+      - DB_NAME=jokedb
+      - MONGO_URL=mongodb://mongodb:27017
+    ports:
+      - "4000:3000"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - joke-network
+    restart: unless-stopped
+
+  # ETL Service
+  etl:
+    build:
+      context: ./services/joke
+      dockerfile: Dockerfile.etl
+    container_name: etl
+    environment:
+      - DB_TYPE=${DB_TYPE:-mysql}
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=jokeuser
+      - DB_PASSWORD=jokepassword
+      - DB_NAME=jokedb
+      - MONGO_URL=mongodb://mongodb:27017
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - joke-network
+    restart: unless-stopped
+
+  # Submit Service
+  submit:
+    build:
+      context: ./services/submit
+      dockerfile: Dockerfile
+    container_name: submit
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - JOKE_SERVICE_URL=http://joke:3000
+      - TYPES_CACHE_FILE=/data/types-cache.json
+    ports:
+      - "4200:3200"
+    volumes:
+      - submit_data:/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - joke-network
+    restart: unless-stopped
+
+  # Moderate Service (with Auth0 OIDC Authentication)
+  moderate:
+    build:
+      context: ./services/moderate
+      dockerfile: Dockerfile
+    container_name: moderate
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - TYPES_CACHE_FILE=/data/types-cache.json
+      # Auth0 OIDC Configuration (Very High 1st requirement)
+      # To enable: set these in a .env file or uncomment and fill in values
+      # 1. Create Auth0 account at https://auth0.com
+      # 2. Create a Regular Web Application
+      # 3. Set Allowed Callback URLs to: http://localhost:4100/callback
+      # 4. Set Allowed Logout URLs to: http://localhost:4100
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_ISSUER=${OIDC_ISSUER:-}
+      - OIDC_SECRET=${OIDC_SECRET:-}
+      - BASE_URL=${MODERATE_BASE_URL:-http://localhost:4100}
+    ports:
+      - "4100:3100"
+    volumes:
+      - moderate_data:/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - joke-network
+    restart: unless-stopped
+
+  # Kong API Gateway
+  kong:
+    build:
+      context: ./services/kong
+      dockerfile: Dockerfile
+    container_name: kong
+    environment:
+      - KONG_DATABASE=off
+      - KONG_DECLARATIVE_CONFIG=/usr/local/kong/declarative/kong.yaml
+      - KONG_PROXY_ACCESS_LOG=/dev/stdout
+      - KONG_ADMIN_ACCESS_LOG=/dev/stdout
+      - KONG_PROXY_ERROR_LOG=/dev/stderr
+      - KONG_ADMIN_ERROR_LOG=/dev/stderr
+    ports:
+      - "80:8000"
+      - "443:8443"
+    depends_on:
+      - joke
+      - submit
+      - moderate
+    networks:
+      - joke-network
+    restart: unless-stopped
+
+networks:
+  joke-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  mongo_data:
+  rabbitmq_data:
+  submit_data:
+  moderate_data:

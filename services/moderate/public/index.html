@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moderate Jokes - CO3404</title>
+    <base href="/moderate-ui/">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/joke-ui" class="nav-brand">
+                <span class="brand-icon">😄</span>
+                <span class="brand-text">JokeHub</span>
+            </a>
+            <div class="nav-links">
+                <a href="/joke-ui" class="nav-link">Browse</a>
+                <a href="/submit-ui" class="nav-link">Submit</a>
+                <a href="/moderate-ui" class="nav-link active">Moderate</a>
+                <a href="/docs" class="nav-link">API</a>
+            </div>
+            <div class="nav-auth" id="navAuth">
+                <a id="navLoginBtn" href="/login" class="nav-btn login-btn hidden">Sign In</a>
+                <div id="navUser" class="nav-user hidden">
+                    <span id="navUserName" class="user-name"></span>
+                    <a href="/logout" class="nav-btn logout-btn">Sign Out</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Landing Page (Not Logged In) -->
+    <div id="landingPage" class="hidden">
+        <section class="hero">
+            <div class="hero-content">
+                <h1>Joke Moderation Panel</h1>
+                <p class="hero-subtitle">Review, approve, and manage submitted jokes before they go live. Ensure quality content for all users.</p>
+                <a href="/login" class="btn-hero">
+                    Sign In to Moderate
+                </a>
+                <p class="hero-note">Authentication required via Auth0 OIDC</p>
+            </div>
+        </section>
+
+        <section class="features">
+            <div class="features-container">
+                <div class="feature-card">
+                    <div class="feature-icon">🔍</div>
+                    <h3>Review Jokes</h3>
+                    <p>Read through submitted jokes from the community queue</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">✏️</div>
+                    <h3>Edit & Categorize</h3>
+                    <p>Modify joke content and assign correct categories before approval</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">✅</div>
+                    <h3>Approve or Reject</h3>
+                    <p>Approve quality jokes for the database or reject inappropriate ones</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Moderation Dashboard (Logged In) -->
+    <div id="dashboardPage" class="hidden">
+        <div class="dashboard-container">
+            <div class="dash-header">
+                <div class="dash-title">
+                    <h1>Moderation Dashboard</h1>
+                    <p>Review and manage submitted jokes</p>
+                </div>
+                <div class="dash-stats">
+                    <div class="mini-stat queue">
+                        <span class="mini-stat-value" id="queueCount">-</span>
+                        <span class="mini-stat-label">In Queue</span>
+                    </div>
+                    <div class="mini-stat approved">
+                        <span class="mini-stat-value" id="approvedCount">0</span>
+                        <span class="mini-stat-label">Approved</span>
+                    </div>
+                    <div class="mini-stat rejected">
+                        <span class="mini-stat-value" id="rejectedCount">0</span>
+                        <span class="mini-stat-label">Rejected</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mod-card">
+                <div class="mod-card-header">
+                    <h2>Review Joke</h2>
+                    <span class="badge" id="statusBadge">Live</span>
+                </div>
+
+                <div id="noJokes" class="empty-state">
+                    <div class="empty-icon">📭</div>
+                    <h3>Queue is Empty</h3>
+                    <p>No jokes waiting for moderation. Checking for new submissions...</p>
+                    <div class="pulse-dots"><span></span><span></span><span></span></div>
+                </div>
+
+                <form id="moderationForm" class="hidden">
+                    <div class="field">
+                        <label for="setup">Setup</label>
+                        <textarea id="setup" rows="3" class="input-field"></textarea>
+                    </div>
+                    <div class="field">
+                        <label for="punchline">Punchline</label>
+                        <textarea id="punchline" rows="2" class="input-field"></textarea>
+                    </div>
+                    <div class="field">
+                        <label for="jokeType">Category</label>
+                        <div class="type-row">
+                            <select id="jokeType" class="input-field"></select>
+                            <input type="text" id="customType" placeholder="Or enter custom..." class="input-field">
+                        </div>
+                    </div>
+                    <div class="meta-bar" id="submittedAt"></div>
+                    <div class="action-buttons">
+                        <button type="button" id="rejectBtn" class="btn btn-reject">Reject</button>
+                        <button type="submit" id="approveBtn" class="btn btn-approve">Approve</button>
+                    </div>
+                </form>
+
+                <div id="loading" class="loading-state hidden">
+                    <div class="spinner"></div>
+                    <p>Processing...</p>
+                </div>
+                <div id="message" class="toast hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="site-footer">
+        <div class="footer-container">
+            <p>CO3404 Distributed Systems &mdash; Student ID: G21266967</p>
+            <p class="footer-status">Service: <span id="status" class="status">Checking...</span></p>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "joke-service",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["app.js"],
+      "cwd": "services/joke",
+      "port": 3000
+    },
+    {
+      "name": "joke-etl",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["etl.js"],
+      "cwd": "services/joke",
+      "port": 0
+    },
+    {
+      "name": "submit-service",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["app.js"],
+      "cwd": "services/submit",
+      "port": 3200
+    },
+    {
+      "name": "moderate-service",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["app.js"],
+      "cwd": "services/moderate",
+      "port": 3100
+    }
+  ]
+}

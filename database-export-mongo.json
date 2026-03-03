@@ -1,0 +1,17 @@
+{
+  "types": [
+    {"name": "general", "createdAt": {"$date": "2024-01-01T00:00:00Z"}},
+    {"name": "programming", "createdAt": {"$date": "2024-01-01T00:00:00Z"}},
+    {"name": "dad", "createdAt": {"$date": "2024-01-01T00:00:00Z"}},
+    {"name": "knock-knock", "createdAt": {"$date": "2024-01-01T00:00:00Z"}},
+    {"name": "pun", "createdAt": {"$date": "2024-01-01T00:00:00Z"}}
+  ],
+  "jokes": [
+    {"setup": "Why do programmers prefer dark mode?", "punchline": "Because light attracts bugs!", "type": "programming", "createdAt": {"$date": "2024-01-01T00:00:00Z"}},
+    {"setup": "Why did the developer go broke?", "punchline": "Because he used up all his cache!", "type": "programming", "createdAt": {"$date": "2024-01-01T00:00:00Z"}},
+    {"setup": "What do you call a fake noodle?", "punchline": "An impasta!", "type": "dad", "createdAt": {"$date": "2024-01-01T00:00:00Z"}},
+    {"setup": "Why dont scientists trust atoms?", "punchline": "Because they make up everything!", "type": "general", "createdAt": {"$date": "2024-01-01T00:00:00Z"}},
+    {"setup": "What do you call a bear with no teeth?", "punchline": "A gummy bear!", "type": "pun", "createdAt": {"$date": "2024-01-01T00:00:00Z"}},
+    {"setup": "Knock knock. Whos there? Boo. Boo who?", "punchline": "Dont cry, its just a joke!", "type": "knock-knock", "createdAt": {"$date": "2024-01-01T00:00:00Z"}}
+  ]
+}

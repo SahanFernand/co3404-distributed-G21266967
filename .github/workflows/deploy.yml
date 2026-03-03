@@ -1,0 +1,195 @@
+# CI/CD Pipeline - CO3404 Distributed Systems
+# Student ID: G21266967
+#
+# Multi-Region Automated Deployment Pipeline
+# East Asia: Kong, Joke (+MySQL+ETL), RabbitMQ
+# Indonesia Central: Submit, Moderate
+#
+# All VMs have public IPs — SSH directly to each VM
+# Kong still serves as the API gateway (single entry point for users)
+
+name: CI/CD Pipeline - CO3404
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Manual trigger
+
+env:
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+
+jobs:
+  # ===========================================
+  # JOB 1: Build and Push Docker Images
+  # ===========================================
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and Push Joke Service
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/joke-service:latest ./services/joke -f ./services/joke/Dockerfile
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/joke-etl:latest ./services/joke -f ./services/joke/Dockerfile.etl
+          docker push ${{ secrets.DOCKER_USERNAME }}/joke-service:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/joke-etl:latest
+
+      - name: Build and Push Submit Service
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/submit-service:latest ./services/submit
+          docker push ${{ secrets.DOCKER_USERNAME }}/submit-service:latest
+
+      - name: Build and Push Moderate Service
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/moderate-service:latest ./services/moderate
+          docker push ${{ secrets.DOCKER_USERNAME }}/moderate-service:latest
+
+      - name: Build and Push Kong Gateway
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/kong-gateway:latest ./services/kong
+          docker push ${{ secrets.DOCKER_USERNAME }}/kong-gateway:latest
+
+  # ===========================================
+  # JOB 2: Deploy to Azure VMs (Multi-Region)
+  # ===========================================
+  # All VMs have public IPs — SSH directly to each one
+  # No more jump host needed for deployment
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          # Add all VM public IPs to known hosts
+          ssh-keyscan -H ${{ secrets.KONG_PUBLIC_IP }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -H ${{ secrets.JOKE_PUBLIC_IP }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -H ${{ secrets.RABBITMQ_PUBLIC_IP }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -H ${{ secrets.SUBMIT_PUBLIC_IP }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -H ${{ secrets.MODERATE_PUBLIC_IP }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Deploy RabbitMQ (East Asia)
+        run: |
+          scp -o StrictHostKeyChecking=no ./services/rabbitmq/rabbitmq.conf azureuser@${{ secrets.RABBITMQ_PUBLIC_IP }}:/home/azureuser/rabbitmq.conf
+          ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.RABBITMQ_PUBLIC_IP }} << 'EOF'
+          docker pull rabbitmq:3.12-management-alpine
+          docker rm -f rabbitmq 2>/dev/null || true
+          docker run -d --name rabbitmq --restart unless-stopped \
+            -p 5672:5672 -p 15672:15672 \
+            -v rabbitmq_data:/var/lib/rabbitmq \
+            -v /home/azureuser/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro \
+            -e RABBITMQ_DEFAULT_USER=guest \
+            -e RABBITMQ_DEFAULT_PASS=guest \
+            rabbitmq:3.12-management-alpine
+          EOF
+
+      - name: Deploy Joke Service + MySQL + ETL (East Asia)
+        run: |
+          ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.JOKE_PUBLIC_IP }} << 'EOF'
+          docker pull ${{ secrets.DOCKER_USERNAME }}/joke-service:latest
+          docker pull ${{ secrets.DOCKER_USERNAME }}/joke-etl:latest
+          docker network create joke-net 2>/dev/null || true
+
+          # MySQL Database
+          docker rm -f mysql 2>/dev/null || true
+          docker run -d --name mysql --network joke-net --restart unless-stopped \
+            -e MYSQL_ROOT_PASSWORD=rootpassword \
+            -e MYSQL_DATABASE=jokedb \
+            -e MYSQL_USER=jokeuser \
+            -e MYSQL_PASSWORD=jokepassword \
+            -v mysql_data:/var/lib/mysql \
+            mysql:8.0
+
+          sleep 30
+
+          # Joke API
+          docker rm -f joke-api 2>/dev/null || true
+          docker run -d --name joke-api --network joke-net --restart unless-stopped \
+            -p 4000:3000 \
+            -e DB_TYPE=mysql -e DB_HOST=mysql -e DB_PORT=3306 \
+            -e DB_USER=jokeuser -e DB_PASSWORD=jokepassword -e DB_NAME=jokedb \
+            ${{ secrets.DOCKER_USERNAME }}/joke-service:latest
+
+          # ETL Service (connects to RabbitMQ via public IP)
+          docker rm -f joke-etl 2>/dev/null || true
+          docker run -d --name joke-etl --network joke-net --restart unless-stopped \
+            -e DB_TYPE=mysql -e DB_HOST=mysql -e DB_PORT=3306 \
+            -e DB_USER=jokeuser -e DB_PASSWORD=jokepassword -e DB_NAME=jokedb \
+            -e RABBITMQ_URL=amqp://guest:guest@${{ secrets.RABBITMQ_PUBLIC_IP }}:5672 \
+            ${{ secrets.DOCKER_USERNAME }}/joke-etl:latest
+          EOF
+
+      - name: Deploy Submit Service (Indonesia Central)
+        run: |
+          ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.SUBMIT_PUBLIC_IP }} << 'EOF'
+          docker pull ${{ secrets.DOCKER_USERNAME }}/submit-service:latest
+          mkdir -p /home/azureuser/data
+          docker rm -f submit 2>/dev/null || true
+          docker run -d --name submit --restart unless-stopped \
+            -p 4200:3200 \
+            -v /home/azureuser/data:/data \
+            -e RABBITMQ_URL=amqp://guest:guest@${{ secrets.RABBITMQ_PUBLIC_IP }}:5672 \
+            -e JOKE_SERVICE_URL=http://${{ secrets.JOKE_PUBLIC_IP }}:4000 \
+            -e TYPES_CACHE_FILE=/data/types-cache.json \
+            ${{ secrets.DOCKER_USERNAME }}/submit-service:latest
+          EOF
+
+      - name: Deploy Moderate Service with OIDC (Indonesia Central)
+        run: |
+          ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.MODERATE_PUBLIC_IP }} << 'EOF'
+          docker pull ${{ secrets.DOCKER_USERNAME }}/moderate-service:latest
+          mkdir -p /home/azureuser/data
+          docker rm -f moderate 2>/dev/null || true
+          docker run -d --name moderate --restart unless-stopped \
+            -p 4100:3100 \
+            -v /home/azureuser/data:/data \
+            -e RABBITMQ_URL=amqp://guest:guest@${{ secrets.RABBITMQ_PUBLIC_IP }}:5672 \
+            -e TYPES_CACHE_FILE=/data/types-cache.json \
+            -e OIDC_CLIENT_ID=${{ secrets.OIDC_CLIENT_ID }} \
+            -e OIDC_ISSUER=${{ secrets.OIDC_ISSUER }} \
+            -e OIDC_SECRET=${{ secrets.OIDC_SECRET }} \
+            -e BASE_URL=http://${{ secrets.KONG_PUBLIC_IP }} \
+            ${{ secrets.DOCKER_USERNAME }}/moderate-service:latest
+          EOF
+
+      - name: Deploy Kong Gateway (East Asia)
+        run: |
+          ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.KONG_PUBLIC_IP }} << 'EOF'
+          docker pull ${{ secrets.DOCKER_USERNAME }}/kong-gateway:latest
+          docker rm -f kong 2>/dev/null || true
+          docker run -d --name kong --restart unless-stopped \
+            -p 80:8000 -p 443:8443 \
+            --add-host=joke:${{ secrets.JOKE_PUBLIC_IP }} \
+            --add-host=submit:${{ secrets.SUBMIT_PUBLIC_IP }} \
+            --add-host=moderate:${{ secrets.MODERATE_PUBLIC_IP }} \
+            --add-host=rabbitmq:${{ secrets.RABBITMQ_PUBLIC_IP }} \
+            ${{ secrets.DOCKER_USERNAME }}/kong-gateway:latest
+          EOF
+
+      - name: Deployment Complete
+        run: |
+          echo "=========================================="
+          echo "  Multi-Region Deployment Complete!"
+          echo "=========================================="
+          echo ""
+          echo "Region Distribution:"
+          echo "  East Asia:  Kong, Joke (+MySQL+ETL), RabbitMQ"
+          echo "  Indonesia Central:  Submit, Moderate"
+          echo ""
+          echo "Access URLs:"
+          echo "  Joke UI:     http://${{ secrets.KONG_PUBLIC_IP }}/joke-ui"
+          echo "  Submit UI:   http://${{ secrets.KONG_PUBLIC_IP }}/submit-ui"
+          echo "  Moderate UI: http://${{ secrets.KONG_PUBLIC_IP }}/moderate-ui"
+          echo "  API Docs:    http://${{ secrets.KONG_PUBLIC_IP }}/docs"

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submit Joke - CO3404</title>
+    <base href="/submit-ui/">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/joke-ui" class="nav-brand">
+                <span class="brand-icon">😄</span>
+                <span class="brand-text">JokeHub</span>
+            </a>
+            <div class="nav-links">
+                <a href="/joke-ui" class="nav-link">Browse</a>
+                <a href="/submit-ui" class="nav-link active">Submit</a>
+                <a href="/moderate-ui" class="nav-link">Moderate</a>
+                <a href="/docs" class="nav-link">API</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <h1>Submit a Joke</h1>
+            <p class="hero-subtitle">Share your best jokes with the community. All submissions go through moderation before appearing in the database.</p>
+        </div>
+    </section>
+
+    <!-- Main Content -->
+    <div class="main-container">
+        <!-- Submit Card -->
+        <div class="submit-card">
+            <div class="submit-card-header">
+                <h2>New Joke Submission</h2>
+                <span class="badge" id="statusBadge">Ready</span>
+            </div>
+
+            <div class="submit-card-body">
+                <form id="jokeForm">
+                    <div class="field">
+                        <label for="setup">Setup <span class="required">*</span></label>
+                        <textarea id="setup" rows="3" class="input-field" placeholder="Enter the joke setup or question..." required></textarea>
+                        <span class="hint">The question or setup of your joke</span>
+                    </div>
+
+                    <div class="field">
+                        <label for="punchline">Punchline <span class="required">*</span></label>
+                        <textarea id="punchline" rows="2" class="input-field" placeholder="Enter the punchline..." required></textarea>
+                        <span class="hint">The funny answer or conclusion</span>
+                    </div>
+
+                    <div class="field">
+                        <label for="jokeType">Category <span class="required">*</span></label>
+                        <div class="type-row">
+                            <select id="jokeType" class="input-field">
+                                <option value="">Select type...</option>
+                            </select>
+                            <input type="text" id="newType" placeholder="Or enter new type..." class="input-field">
+                        </div>
+                        <span class="hint">Select an existing category or create a new one</span>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button type="submit" id="submitBtn" class="btn btn-submit">
+                            <span class="btn-text">Submit Joke</span>
+                            <span class="btn-loading hidden">Submitting...</span>
+                        </button>
+                    </div>
+                </form>
+
+                <div id="successMessage" class="toast success hidden">
+                    Joke submitted successfully! Your joke will appear after moderation.
+                </div>
+
+                <div id="errorMessage" class="toast error hidden"></div>
+            </div>
+        </div>
+
+        <!-- Features Section -->
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">📝</div>
+                <h3>Write Your Joke</h3>
+                <p>Enter a setup and punchline for your joke submission</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🏷️</div>
+                <h3>Categorize</h3>
+                <p>Choose an existing category or create a new one</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">✅</div>
+                <h3>Get Approved</h3>
+                <p>Moderators review and approve jokes before they go live</p>
+            </div>
+        </div>
+
+        <!-- API Docs Card -->
+        <div class="docs-card">
+            <div class="docs-card-body">
+                <h3>API Documentation</h3>
+                <p>View the complete REST API documentation with interactive examples</p>
+                <a href="/docs" class="btn btn-docs" target="_blank">View Swagger Docs</a>
+            </div>
+        </div>
+    </div>
+
+    <footer class="site-footer">
+        <div class="footer-container">
+            <p>CO3404 Distributed Systems &mdash; Student ID: G21266967</p>
+            <p class="footer-status">Service: <span id="status" class="status">Checking...</span> | Queue: <span id="queueStatus">-</span></p>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
