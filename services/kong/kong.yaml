@@ -72,19 +72,19 @@ plugins:
   - name: rate-limiting
     service: joke-service
     config:
-      minute: 30
+      minute: 60
       policy: local
 
   - name: rate-limiting
     service: submit-service
     config:
-      minute: 10
+      minute: 60
       policy: local
 
   - name: rate-limiting
     service: moderate-service
     config:
-      minute: 20
+      minute: 100
       policy: local
 
   - name: rate-limiting
