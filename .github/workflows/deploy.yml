@@ -5,6 +5,7 @@
 # East Asia: Kong, Joke (+MySQL+ETL), RabbitMQ
 # Indonesia Central: Submit, Moderate
 #
+# Uses GitHub Container Registry (ghcr.io) for Docker images
 # All VMs have public IPs — SSH directly to each VM
 # Kong still serves as the API gateway (single entry point for users)
 
@@ -16,7 +17,8 @@ on:
   workflow_dispatch:  # Manual trigger
 
 env:
-  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
 
 jobs:
   # ===========================================
@@ -24,43 +26,45 @@ jobs:
   # ===========================================
   build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Login to Docker Hub
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and Push Joke Service
         run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/joke-service:latest ./services/joke -f ./services/joke/Dockerfile
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/joke-etl:latest ./services/joke -f ./services/joke/Dockerfile.etl
-          docker push ${{ secrets.DOCKER_USERNAME }}/joke-service:latest
-          docker push ${{ secrets.DOCKER_USERNAME }}/joke-etl:latest
+          docker build -t ${{ env.IMAGE_PREFIX }}/joke-service:latest ./services/joke -f ./services/joke/Dockerfile
+          docker build -t ${{ env.IMAGE_PREFIX }}/joke-etl:latest ./services/joke -f ./services/joke/Dockerfile.etl
+          docker push ${{ env.IMAGE_PREFIX }}/joke-service:latest
+          docker push ${{ env.IMAGE_PREFIX }}/joke-etl:latest
 
       - name: Build and Push Submit Service
         run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/submit-service:latest ./services/submit
-          docker push ${{ secrets.DOCKER_USERNAME }}/submit-service:latest
+          docker build -t ${{ env.IMAGE_PREFIX }}/submit-service:latest ./services/submit
+          docker push ${{ env.IMAGE_PREFIX }}/submit-service:latest
 
       - name: Build and Push Moderate Service
         run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/moderate-service:latest ./services/moderate
-          docker push ${{ secrets.DOCKER_USERNAME }}/moderate-service:latest
+          docker build -t ${{ env.IMAGE_PREFIX }}/moderate-service:latest ./services/moderate
+          docker push ${{ env.IMAGE_PREFIX }}/moderate-service:latest
 
       - name: Build and Push Kong Gateway
         run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/kong-gateway:latest ./services/kong
-          docker push ${{ secrets.DOCKER_USERNAME }}/kong-gateway:latest
+          docker build -t ${{ env.IMAGE_PREFIX }}/kong-gateway:latest ./services/kong
+          docker push ${{ env.IMAGE_PREFIX }}/kong-gateway:latest
 
   # ===========================================
   # JOB 2: Deploy to Azure VMs (Multi-Region)
   # ===========================================
-  # All VMs have public IPs — SSH directly to each one
-  # No more jump host needed for deployment
   deploy:
     runs-on: ubuntu-latest
     needs: build-and-push
@@ -73,7 +77,6 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          # Add all VM public IPs to known hosts
           ssh-keyscan -H ${{ secrets.KONG_PUBLIC_IP }} >> ~/.ssh/known_hosts 2>/dev/null || true
           ssh-keyscan -H ${{ secrets.JOKE_PUBLIC_IP }} >> ~/.ssh/known_hosts 2>/dev/null || true
           ssh-keyscan -H ${{ secrets.RABBITMQ_PUBLIC_IP }} >> ~/.ssh/known_hosts 2>/dev/null || true
@@ -96,10 +99,13 @@ jobs:
           EOF
 
       - name: Deploy Joke Service + MySQL + ETL (East Asia)
+        env:
+          IMG_PREFIX: ghcr.io/${{ github.repository_owner }}
         run: |
-          ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.JOKE_PUBLIC_IP }} << 'EOF'
-          docker pull ${{ secrets.DOCKER_USERNAME }}/joke-service:latest
-          docker pull ${{ secrets.DOCKER_USERNAME }}/joke-etl:latest
+          ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.JOKE_PUBLIC_IP }} << EOF
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker pull ${IMG_PREFIX}/joke-service:latest
+          docker pull ${IMG_PREFIX}/joke-etl:latest
           docker network create joke-net 2>/dev/null || true
 
           # MySQL Database
@@ -120,21 +126,24 @@ jobs:
             -p 4000:3000 \
             -e DB_TYPE=mysql -e DB_HOST=mysql -e DB_PORT=3306 \
             -e DB_USER=jokeuser -e DB_PASSWORD=jokepassword -e DB_NAME=jokedb \
-            ${{ secrets.DOCKER_USERNAME }}/joke-service:latest
+            ${IMG_PREFIX}/joke-service:latest
 
-          # ETL Service (connects to RabbitMQ via public IP)
+          # ETL Service
           docker rm -f joke-etl 2>/dev/null || true
           docker run -d --name joke-etl --network joke-net --restart unless-stopped \
             -e DB_TYPE=mysql -e DB_HOST=mysql -e DB_PORT=3306 \
             -e DB_USER=jokeuser -e DB_PASSWORD=jokepassword -e DB_NAME=jokedb \
             -e RABBITMQ_URL=amqp://guest:guest@${{ secrets.RABBITMQ_PUBLIC_IP }}:5672 \
-            ${{ secrets.DOCKER_USERNAME }}/joke-etl:latest
+            ${IMG_PREFIX}/joke-etl:latest
           EOF
 
       - name: Deploy Submit Service (Indonesia Central)
+        env:
+          IMG_PREFIX: ghcr.io/${{ github.repository_owner }}
         run: |
-          ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.SUBMIT_PUBLIC_IP }} << 'EOF'
-          docker pull ${{ secrets.DOCKER_USERNAME }}/submit-service:latest
+          ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.SUBMIT_PUBLIC_IP }} << EOF
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker pull ${IMG_PREFIX}/submit-service:latest
           mkdir -p /home/azureuser/data
           docker rm -f submit 2>/dev/null || true
           docker run -d --name submit --restart unless-stopped \
@@ -143,13 +152,16 @@ jobs:
             -e RABBITMQ_URL=amqp://guest:guest@${{ secrets.RABBITMQ_PUBLIC_IP }}:5672 \
             -e JOKE_SERVICE_URL=http://${{ secrets.JOKE_PUBLIC_IP }}:4000 \
             -e TYPES_CACHE_FILE=/data/types-cache.json \
-            ${{ secrets.DOCKER_USERNAME }}/submit-service:latest
+            ${IMG_PREFIX}/submit-service:latest
           EOF
 
       - name: Deploy Moderate Service with OIDC (Indonesia Central)
+        env:
+          IMG_PREFIX: ghcr.io/${{ github.repository_owner }}
         run: |
-          ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.MODERATE_PUBLIC_IP }} << 'EOF'
-          docker pull ${{ secrets.DOCKER_USERNAME }}/moderate-service:latest
+          ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.MODERATE_PUBLIC_IP }} << EOF
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker pull ${IMG_PREFIX}/moderate-service:latest
           mkdir -p /home/azureuser/data
           docker rm -f moderate 2>/dev/null || true
           docker run -d --name moderate --restart unless-stopped \
@@ -161,13 +173,17 @@ jobs:
             -e OIDC_ISSUER=${{ secrets.OIDC_ISSUER }} \
             -e OIDC_SECRET=${{ secrets.OIDC_SECRET }} \
             -e BASE_URL=http://${{ secrets.KONG_PUBLIC_IP }} \
-            ${{ secrets.DOCKER_USERNAME }}/moderate-service:latest
+            -e POST_LOGIN_REDIRECT=/moderate-ui \
+            ${IMG_PREFIX}/moderate-service:latest
           EOF
 
       - name: Deploy Kong Gateway (East Asia)
+        env:
+          IMG_PREFIX: ghcr.io/${{ github.repository_owner }}
         run: |
-          ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.KONG_PUBLIC_IP }} << 'EOF'
-          docker pull ${{ secrets.DOCKER_USERNAME }}/kong-gateway:latest
+          ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.KONG_PUBLIC_IP }} << EOF
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker pull ${IMG_PREFIX}/kong-gateway:latest
           docker rm -f kong 2>/dev/null || true
           docker run -d --name kong --restart unless-stopped \
             -p 80:8000 -p 443:8443 \
@@ -175,7 +191,7 @@ jobs:
             --add-host=submit:${{ secrets.SUBMIT_PUBLIC_IP }} \
             --add-host=moderate:${{ secrets.MODERATE_PUBLIC_IP }} \
             --add-host=rabbitmq:${{ secrets.RABBITMQ_PUBLIC_IP }} \
-            ${{ secrets.DOCKER_USERNAME }}/kong-gateway:latest
+            ${IMG_PREFIX}/kong-gateway:latest
           EOF
 
       - name: Deployment Complete
