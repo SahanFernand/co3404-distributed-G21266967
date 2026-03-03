@@ -152,7 +152,7 @@ jobs:
           docker run -d --name joke-etl --network joke-net --restart unless-stopped \
             -e DB_TYPE=mysql -e DB_HOST=mysql -e DB_PORT=3306 \
             -e DB_USER=jokeuser -e DB_PASSWORD=jokepassword -e DB_NAME=jokedb \
-            -e RABBITMQ_URL=amqp://${RMQUSER}:${RMQPASS}@${{ secrets.RABBITMQ_PUBLIC_IP }}:5672 \
+            -e RABBITMQ_URL=amqp://${RMQUSER}:${RMQPASS}@10.0.1.50:5672 \
             ${IMG}/joke-etl:latest
           EOF
 
@@ -204,10 +204,10 @@ jobs:
           docker rm -f kong 2>/dev/null || true
           docker run -d --name kong --restart unless-stopped \
             -p 80:8000 -p 443:8443 \
-            --add-host=joke:${{ secrets.JOKE_PUBLIC_IP }} \
+            --add-host=joke:10.0.1.20 \
+            --add-host=rabbitmq:10.0.1.50 \
             --add-host=submit:${{ secrets.SUBMIT_PUBLIC_IP }} \
             --add-host=moderate:${{ secrets.MODERATE_PUBLIC_IP }} \
-            --add-host=rabbitmq:${{ secrets.RABBITMQ_PUBLIC_IP }} \
             ${IMG}/kong-gateway:latest
           EOF
 
