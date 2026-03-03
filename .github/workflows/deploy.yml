@@ -87,6 +87,7 @@ jobs:
 
       - name: Deploy RabbitMQ (East Asia)
         run: |
+          ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.RABBITMQ_PUBLIC_IP }} "rm -rf /home/azureuser/rabbitmq.conf"
           scp -o StrictHostKeyChecking=no ./services/rabbitmq/rabbitmq.conf azureuser@${{ secrets.RABBITMQ_PUBLIC_IP }}:/home/azureuser/rabbitmq.conf
           ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.RABBITMQ_PUBLIC_IP }} << 'EOF'
           docker pull rabbitmq:3.12-management-alpine
