@@ -2,9 +2,9 @@
 /* Udemy-inspired clean, modern design */
 
 :root {
-    --primary: #a435f0;
-    --primary-dark: #8710d8;
-    --primary-light: #e8d5f5;
+    --primary: #0056d2;
+    --primary-dark: #003e99;
+    --primary-light: #d6e6fa;
     --bg: #f7f9fa;
     --white: #ffffff;
     --text-dark: #1c1d1f;
@@ -98,7 +98,7 @@ body {
 
 /* ========== HERO / LANDING ========== */
 .hero {
-    background: linear-gradient(135deg, #1c1d1f 0%, #3e1f69 100%);
+    background: linear-gradient(135deg, #1c1d1f 0%, #0056d2 100%);
     color: white;
     padding: 80px 24px;
     text-align: center;
@@ -144,7 +144,7 @@ body {
 }
 
 .feature-card:hover { box-shadow: var(--card-shadow); }
-.feature-icon { font-size: 2.5rem; margin-bottom: 16px; }
+.feature-icon { font-size: 2.5rem; margin-bottom: 16px; color: var(--primary); }
 .feature-card h3 { font-size: 1rem; font-weight: 600; color: var(--text-dark); margin-bottom: 8px; }
 .feature-card p { font-size: 0.875rem; color: var(--text-muted); line-height: 1.5; }
 
@@ -206,7 +206,7 @@ body {
 }
 
 .empty-state { text-align: center; padding: 60px 28px; }
-.empty-icon { font-size: 3rem; margin-bottom: 16px; }
+.empty-icon { font-size: 3rem; margin-bottom: 16px; color: var(--text-muted); }
 .empty-state h3 { font-size: 1.1rem; font-weight: 600; color: var(--text-dark); margin-bottom: 8px; }
 .empty-state p { color: var(--text-muted); font-size: 0.9rem; }
 
@@ -254,7 +254,7 @@ body {
 .input-field:focus {
     border-color: var(--primary);
     outline: none;
-    box-shadow: 0 0 0 3px rgba(164, 53, 240, 0.1);
+    box-shadow: 0 0 0 3px rgba(0, 86, 210, 0.1);
 }
 
 .type-row { display: flex; gap: 10px; }
