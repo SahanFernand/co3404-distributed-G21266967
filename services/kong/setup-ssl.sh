@@ -32,6 +32,11 @@ if [ -f "${CERT_DIR}/fullchain.pem" ] && [ -f "${CERT_DIR}/privkey.pem" ]; then
     echo "SSL certificate obtained successfully for ${DOMAIN}"
     echo "  Certificate: ${CERT_DIR}/fullchain.pem"
     echo "  Private Key: ${CERT_DIR}/privkey.pem"
+
+    # Fix permissions so Kong container (non-root) can read certs
+    sudo chmod 755 /etc/letsencrypt/live /etc/letsencrypt/archive
+    sudo chmod 644 /etc/letsencrypt/archive/${DOMAIN}/privkey*.pem
+    echo "  Permissions fixed for Docker container access"
 else
     echo "ERROR: Failed to obtain SSL certificate"
     exit 1
