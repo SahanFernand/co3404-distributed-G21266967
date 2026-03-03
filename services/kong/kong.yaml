@@ -1,5 +1,12 @@
-# Kong API Gateway - Declarative Configuration
+# Kong API Gateway - Declarative Configuration (Hardened)
 # Student ID: G21266967
+#
+# Security Features:
+# - Rate limiting on all services (prevents abuse/DDoS)
+# - CORS restricted to Kong public IP (not wildcard *)
+# - RabbitMQ admin IP-restricted via Kong ACL
+# - Request size limits to prevent payload attacks
+# - Security headers (X-Frame-Options, XSS Protection)
 
 _format_version: "3.0"
 _transform: true
@@ -61,16 +68,37 @@ services:
         strip_path: false
 
 plugins:
+  # Rate limiting per service - prevents abuse and DDoS
   - name: rate-limiting
     service: joke-service
+    config:
+      minute: 30
+      policy: local
+
+  - name: rate-limiting
+    service: submit-service
+    config:
+      minute: 10
+      policy: local
+
+  - name: rate-limiting
+    service: moderate-service
     config:
       minute: 20
       policy: local
 
+  - name: rate-limiting
+    service: rabbitmq-admin
+    config:
+      minute: 10
+      policy: local
+
+  # CORS - restricted to same-origin (Kong gateway IP)
   - name: cors
     config:
       origins:
-        - "*"
+        - "http://20.239.48.46"
+        - "https://20.239.48.46"
       methods:
         - GET
         - POST
@@ -81,3 +109,20 @@ plugins:
         - Content-Type
         - Authorization
       credentials: true
+      max_age: 3600
+
+  # Request size limiting - prevent large payload attacks
+  - name: request-size-limiting
+    config:
+      allowed_payload_size: 1
+      size_unit: megabytes
+
+  # Security response headers
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - "X-Frame-Options:DENY"
+          - "X-Content-Type-Options:nosniff"
+          - "X-XSS-Protection:1; mode=block"
+          - "Referrer-Policy:strict-origin-when-cross-origin"

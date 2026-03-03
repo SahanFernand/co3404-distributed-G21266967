@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CO3404 Architecture Diagram - G21266967</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; padding: 30px; }
+.diagram { max-width: 1100px; margin: 0 auto; background: white; border-radius: 16px; padding: 40px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+.title { text-align: center; margin-bottom: 8px; font-size: 1.6rem; font-weight: 700; color: #1a1a2e; }
+.subtitle { text-align: center; margin-bottom: 30px; font-size: 0.9rem; color: #666; }
+
+/* Regions */
+.regions { display: flex; gap: 24px; margin-bottom: 24px; }
+.region { flex: 1; border: 2px solid #d1d7dc; border-radius: 12px; padding: 20px; position: relative; background: #fafbfc; }
+.region-label { position: absolute; top: -12px; left: 20px; background: white; padding: 0 10px; font-weight: 700; font-size: 0.85rem; color: #0056d2; border: 1px solid #d1d7dc; border-radius: 6px; }
+
+/* Nodes */
+.node { background: white; border: 2px solid #0056d2; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; position: relative; }
+.node-title { font-weight: 700; font-size: 0.95rem; color: #1a1a2e; margin-bottom: 4px; }
+.node-detail { font-size: 0.78rem; color: #666; line-height: 1.4; }
+.node-ip { font-size: 0.72rem; color: #0056d2; font-weight: 600; margin-top: 4px; }
+.node-port { font-size: 0.7rem; color: #888; }
+.node.kong { border-color: #e67e22; background: #fef9f3; }
+.node.rabbitmq { border-color: #f39c12; background: #fffbf0; }
+.node.db { border-color: #27ae60; background: #f0fdf4; }
+.node.service { border-color: #0056d2; background: #f0f6ff; }
+.node.auth { border-color: #8e44ad; background: #faf0ff; }
+
+/* User/External */
+.external-row { display: flex; justify-content: center; gap: 40px; margin-bottom: 20px; }
+.ext-box { text-align: center; padding: 12px 24px; border: 2px dashed #999; border-radius: 10px; background: #f8f8f8; }
+.ext-box .label { font-weight: 700; font-size: 0.85rem; color: #333; }
+.ext-box .desc { font-size: 0.72rem; color: #888; }
+
+/* Arrows */
+.arrow-section { text-align: center; margin: 10px 0; font-size: 1.2rem; color: #0056d2; }
+.arrow-label { font-size: 0.72rem; color: #666; display: block; }
+
+/* Flow descriptions */
+.flows { margin-top: 24px; border-top: 2px solid #e8e9eb; padding-top: 20px; }
+.flows h3 { font-size: 1rem; font-weight: 700; color: #1a1a2e; margin-bottom: 12px; }
+.flow-item { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; padding: 10px 14px; background: #f7f9fa; border-radius: 8px; border-left: 3px solid #0056d2; }
+.flow-num { font-weight: 700; color: #0056d2; font-size: 0.85rem; min-width: 24px; }
+.flow-text { font-size: 0.82rem; color: #444; line-height: 1.5; }
+
+/* Connections inside region */
+.conn { font-size: 0.7rem; color: #0056d2; text-align: center; margin: 4px 0; font-weight: 600; }
+
+/* Tech stack */
+.tech-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.tech-tag { font-size: 0.65rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+.tech-tag.docker { background: #e3f2fd; color: #1565c0; }
+.tech-tag.node { background: #e8f5e9; color: #2e7d32; }
+.tech-tag.mysql { background: #fff3e0; color: #e65100; }
+.tech-tag.rabbit { background: #fff8e1; color: #f57f17; }
+.tech-tag.kong-t { background: #fce4ec; color: #c62828; }
+.tech-tag.auth0 { background: #f3e5f5; color: #7b1fa2; }
+.tech-tag.terraform { background: #e8eaf6; color: #283593; }
+
+/* CI/CD */
+.cicd-bar { margin-top: 24px; padding: 16px 20px; background: #1a1a2e; border-radius: 10px; color: white; }
+.cicd-bar h4 { font-size: 0.9rem; margin-bottom: 8px; color: #7eb8ff; }
+.cicd-flow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cicd-step { padding: 6px 14px; background: rgba(255,255,255,0.1); border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
+.cicd-arrow { color: #7eb8ff; font-size: 1rem; }
+
+/* Cross-region line */
+.cross-region { text-align: center; margin: 8px 0; padding: 8px; background: #fff3cd; border-radius: 8px; font-size: 0.75rem; color: #856404; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="diagram">
+    <div class="title">CO3404 Distributed Systems Architecture</div>
+    <div class="subtitle">Student ID: G21266967 | Multi-Region Azure Deployment | JokeHub Platform</div>
+
+    <!-- External Users & Services -->
+    <div class="external-row">
+        <div class="ext-box">
+            <div class="label">Browser / Client</div>
+            <div class="desc">End users access via HTTP</div>
+        </div>
+        <div class="ext-box" style="border-color: #8e44ad;">
+            <div class="label">Auth0 (OIDC)</div>
+            <div class="desc">dev-ptm68ojcvqrklsnp.us.auth0.com</div>
+        </div>
+        <div class="ext-box" style="border-color: #1a1a2e;">
+            <div class="label">GitHub Actions</div>
+            <div class="desc">CI/CD Pipeline (ghcr.io)</div>
+        </div>
+    </div>
+
+    <div class="arrow-section">
+        &#9660; &#9660; &#9660;
+        <span class="arrow-label">HTTP :80 / HTTPS :443</span>
+    </div>
+
+    <!-- Regions -->
+    <div class="regions">
+        <!-- East Asia -->
+        <div class="region">
+            <div class="region-label">East Asia Region</div>
+
+            <div class="node kong">
+                <div class="node-title">Kong API Gateway</div>
+                <div class="node-detail">Single entry point. Routes traffic to all services. Serves static UIs.</div>
+                <div class="node-ip">20.239.48.46 (Public) | 10.0.1.10</div>
+                <div class="node-port">Port 80 -> 8000 | 443 -> 8443</div>
+                <div class="tech-row">
+                    <span class="tech-tag kong-t">Kong</span>
+                    <span class="tech-tag docker">Docker</span>
+                </div>
+            </div>
+
+            <div class="conn">&#8595; Routes: /joke-ui, /submit-ui, /moderate-ui, /joke, /submit, /moderate &#8595;</div>
+
+            <div class="node service">
+                <div class="node-title">Joke Service (API + UI)</div>
+                <div class="node-detail">REST API for jokes. MySQL database. ETL worker consumes from RabbitMQ.</div>
+                <div class="node-ip">40.83.74.64 (Public) | 10.0.1.20</div>
+                <div class="node-port">Port 4000 -> 3000</div>
+                <div class="tech-row">
+                    <span class="tech-tag node">Node.js</span>
+                    <span class="tech-tag docker">Docker</span>
+                </div>
+            </div>
+
+            <div style="margin-left: 20px;">
+                <div class="node db" style="margin-bottom: 8px;">
+                    <div class="node-title">MySQL 8.0</div>
+                    <div class="node-detail">Joke database (jokedb). Stores jokes + types.</div>
+                    <div class="node-port">Port 3306 (internal joke-net)</div>
+                    <div class="tech-row"><span class="tech-tag mysql">MySQL</span><span class="tech-tag docker">Docker</span></div>
+                </div>
+                <div class="node service" style="border-color: #16a085; background: #f0fdfa;">
+                    <div class="node-title">ETL Worker</div>
+                    <div class="node-detail">Consumes moderated jokes from RabbitMQ, inserts into MySQL.</div>
+                    <div class="tech-row"><span class="tech-tag node">Node.js</span><span class="tech-tag docker">Docker</span></div>
+                </div>
+            </div>
+
+            <div class="node rabbitmq" style="margin-top: 12px;">
+                <div class="node-title">RabbitMQ</div>
+                <div class="node-detail">Message broker. Queues: submit_joke, moderated_joke</div>
+                <div class="node-ip">20.24.195.5 (Public) | 10.0.1.50</div>
+                <div class="node-port">AMQP: 5672 | Management: 15672</div>
+                <div class="tech-row"><span class="tech-tag rabbit">RabbitMQ</span><span class="tech-tag docker">Docker</span></div>
+            </div>
+        </div>
+
+        <!-- Indonesia Central -->
+        <div class="region">
+            <div class="region-label">Indonesia Central Region</div>
+
+            <div class="node service">
+                <div class="node-title">Submit Service (API + UI)</div>
+                <div class="node-detail">Accepts joke submissions. Publishes to RabbitMQ submit_joke queue.</div>
+                <div class="node-ip">70.153.147.116 (Public) | 10.1.1.30</div>
+                <div class="node-port">Port 4200 -> 3200</div>
+                <div class="tech-row">
+                    <span class="tech-tag node">Node.js</span>
+                    <span class="tech-tag docker">Docker</span>
+                </div>
+            </div>
+
+            <div class="conn">&#8593; Publishes to RabbitMQ (AMQP cross-region) &#8593;</div>
+
+            <div class="node auth">
+                <div class="node-title">Moderate Service (API + UI + OIDC)</div>
+                <div class="node-detail">Auth0 login. Moderators approve/reject jokes. Publishes to moderated_joke queue.</div>
+                <div class="node-ip">48.193.42.232 (Public) | 10.1.1.40</div>
+                <div class="node-port">Port 4100 -> 3100</div>
+                <div class="tech-row">
+                    <span class="tech-tag node">Node.js</span>
+                    <span class="tech-tag auth0">Auth0 OIDC</span>
+                    <span class="tech-tag docker">Docker</span>
+                </div>
+            </div>
+
+            <div class="conn">&#8593; Consumes from submit_joke | Publishes to moderated_joke &#8593;</div>
+
+            <div style="padding: 12px; background: #fff3cd; border-radius: 8px; margin-top: 12px;">
+                <div style="font-size: 0.78rem; font-weight: 600; color: #856404;">Cross-Region Communication</div>
+                <div style="font-size: 0.72rem; color: #856404; margin-top: 4px;">
+                    Submit & Moderate connect to RabbitMQ in East Asia via public IP over AMQP (port 5672).
+                    Submit fetches joke types from Joke Service API.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message Flow -->
+    <div class="flows">
+        <h3>Data Flow: Joke Lifecycle</h3>
+        <div class="flow-item">
+            <div class="flow-num">1</div>
+            <div class="flow-text"><b>Browse:</b> User visits /joke-ui via Kong. Kong routes to Joke Service. Joke API queries MySQL and returns random jokes.</div>
+        </div>
+        <div class="flow-item">
+            <div class="flow-num">2</div>
+            <div class="flow-text"><b>Submit:</b> User submits joke via /submit-ui. Submit Service publishes joke to RabbitMQ <code>submit_joke</code> queue (cross-region AMQP).</div>
+        </div>
+        <div class="flow-item">
+            <div class="flow-num">3</div>
+            <div class="flow-text"><b>Moderate:</b> Moderator logs in via Auth0 OIDC at /moderate-ui. Moderate Service consumes from <code>submit_joke</code> queue. Moderator approves/rejects.</div>
+        </div>
+        <div class="flow-item">
+            <div class="flow-num">4</div>
+            <div class="flow-text"><b>ETL:</b> Approved jokes are published to <code>moderated_joke</code> queue. ETL Worker in East Asia consumes and inserts into MySQL database.</div>
+        </div>
+    </div>
+
+    <!-- CI/CD -->
+    <div class="cicd-bar">
+        <h4>CI/CD Pipeline (GitHub Actions)</h4>
+        <div class="cicd-flow">
+            <span class="cicd-step">Push to main</span>
+            <span class="cicd-arrow">&#8594;</span>
+            <span class="cicd-step">Build Docker Images</span>
+            <span class="cicd-arrow">&#8594;</span>
+            <span class="cicd-step">Push to ghcr.io</span>
+            <span class="cicd-arrow">&#8594;</span>
+            <span class="cicd-step">SSH Deploy to VMs</span>
+            <span class="cicd-arrow">&#8594;</span>
+            <span class="cicd-step">Docker Pull & Run</span>
+        </div>
+    </div>
+
+    <!-- Security Hardening -->
+    <div style="margin-top: 24px; border: 2px solid #c0392b; border-radius: 10px; padding: 20px; background: #fdf2f2;">
+        <h3 style="font-size: 1rem; font-weight: 700; color: #c0392b; margin-bottom: 12px;">Security Hardening Measures</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div style="font-size: 0.78rem; color: #444; padding: 8px 12px; background: white; border-radius: 6px; border-left: 3px solid #c0392b;">
+                <b>NSG Firewall Rules</b> — Service ports restricted to specific VM IPs. Only Kong accepts public HTTP/HTTPS. Explicit deny-all rule.
+            </div>
+            <div style="font-size: 0.78rem; color: #444; padding: 8px 12px; background: white; border-radius: 6px; border-left: 3px solid #e67e22;">
+                <b>RabbitMQ Auth</b> — Custom credentials via GitHub Secrets. Guest user disabled for remote access. Connection limits enforced.
+            </div>
+            <div style="font-size: 0.78rem; color: #444; padding: 8px 12px; background: white; border-radius: 6px; border-left: 3px solid #0056d2;">
+                <b>Kong Gateway</b> — Rate limiting on all services. CORS restricted to gateway origin. Security headers (XSS, CSRF, Clickjacking). Request size limits.
+            </div>
+            <div style="font-size: 0.78rem; color: #444; padding: 8px 12px; background: white; border-radius: 6px; border-left: 3px solid #8e44ad;">
+                <b>Auth0 OIDC</b> — Moderate service protected by OpenID Connect. Secrets stored in GitHub Actions, never in code. Session-based authentication.
+            </div>
+        </div>
+        <div style="margin-top: 10px; font-size: 0.72rem; color: #888; font-style: italic;">
+            Production improvements: Azure VNet Peering (private cross-region), Azure Bastion (SSH management), TLS everywhere, Azure Key Vault for secrets
+        </div>
+    </div>
+
+    <!-- Tech Stack -->
+    <div style="margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;">
+        <span class="tech-tag terraform" style="font-size: 0.78rem; padding: 4px 12px;">Terraform (IaC)</span>
+        <span class="tech-tag docker" style="font-size: 0.78rem; padding: 4px 12px;">Docker</span>
+        <span class="tech-tag node" style="font-size: 0.78rem; padding: 4px 12px;">Node.js / Express</span>
+        <span class="tech-tag mysql" style="font-size: 0.78rem; padding: 4px 12px;">MySQL 8.0</span>
+        <span class="tech-tag rabbit" style="font-size: 0.78rem; padding: 4px 12px;">RabbitMQ</span>
+        <span class="tech-tag kong-t" style="font-size: 0.78rem; padding: 4px 12px;">Kong Gateway</span>
+        <span class="tech-tag auth0" style="font-size: 0.78rem; padding: 4px 12px;">Auth0 OIDC</span>
+        <span class="tech-tag" style="font-size: 0.78rem; padding: 4px 12px; background: #e0e0e0; color: #333;">Azure VMs</span>
+        <span class="tech-tag" style="font-size: 0.78rem; padding: 4px 12px; background: #1a1a2e; color: white;">GitHub Actions</span>
+    </div>
+</div>
+</body>
+</html>

@@ -100,15 +100,17 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.RABBITMQ_PUBLIC_IP }} "rm -rf /home/azureuser/rabbitmq.conf"
           scp -o StrictHostKeyChecking=no ./services/rabbitmq/rabbitmq.conf azureuser@${{ secrets.RABBITMQ_PUBLIC_IP }}:/home/azureuser/rabbitmq.conf
-          ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.RABBITMQ_PUBLIC_IP }} << 'EOF'
+          RMQUSER=${{ secrets.RABBITMQ_USER }}
+          RMQPASS=${{ secrets.RABBITMQ_PASS }}
+          ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.RABBITMQ_PUBLIC_IP }} << EOF
           docker pull rabbitmq:3.12-management-alpine
           docker rm -f rabbitmq 2>/dev/null || true
           docker run -d --name rabbitmq --restart unless-stopped \
             -p 5672:5672 -p 15672:15672 \
             -v rabbitmq_data:/var/lib/rabbitmq \
             -v /home/azureuser/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro \
-            -e RABBITMQ_DEFAULT_USER=guest \
-            -e RABBITMQ_DEFAULT_PASS=guest \
+            -e RABBITMQ_DEFAULT_USER=${RMQUSER} \
+            -e RABBITMQ_DEFAULT_PASS=${RMQPASS} \
             rabbitmq:3.12-management-alpine
           EOF
 
@@ -118,6 +120,8 @@ jobs:
       - name: Deploy Joke Service + MySQL + ETL (East Asia)
         run: |
           IMG=${{ env.IMG }}
+          RMQUSER=${{ secrets.RABBITMQ_USER }}
+          RMQPASS=${{ secrets.RABBITMQ_PASS }}
           ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.JOKE_PUBLIC_IP }} << EOF
           docker pull ${IMG}/joke-service:latest
           docker pull ${IMG}/joke-etl:latest
@@ -148,13 +152,15 @@ jobs:
           docker run -d --name joke-etl --network joke-net --restart unless-stopped \
             -e DB_TYPE=mysql -e DB_HOST=mysql -e DB_PORT=3306 \
             -e DB_USER=jokeuser -e DB_PASSWORD=jokepassword -e DB_NAME=jokedb \
-            -e RABBITMQ_URL=amqp://guest:guest@${{ secrets.RABBITMQ_PUBLIC_IP }}:5672 \
+            -e RABBITMQ_URL=amqp://${RMQUSER}:${RMQPASS}@${{ secrets.RABBITMQ_PUBLIC_IP }}:5672 \
             ${IMG}/joke-etl:latest
           EOF
 
       - name: Deploy Submit Service (Indonesia Central)
         run: |
           IMG=${{ env.IMG }}
+          RMQUSER=${{ secrets.RABBITMQ_USER }}
+          RMQPASS=${{ secrets.RABBITMQ_PASS }}
           ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.SUBMIT_PUBLIC_IP }} << EOF
           docker pull ${IMG}/submit-service:latest
           mkdir -p /home/azureuser/data
@@ -162,7 +168,7 @@ jobs:
           docker run -d --name submit --restart unless-stopped \
             -p 4200:3200 \
             -v /home/azureuser/data:/data \
-            -e RABBITMQ_URL=amqp://guest:guest@${{ secrets.RABBITMQ_PUBLIC_IP }}:5672 \
+            -e RABBITMQ_URL=amqp://${RMQUSER}:${RMQPASS}@${{ secrets.RABBITMQ_PUBLIC_IP }}:5672 \
             -e JOKE_SERVICE_URL=http://${{ secrets.JOKE_PUBLIC_IP }}:4000 \
             -e TYPES_CACHE_FILE=/data/types-cache.json \
             ${IMG}/submit-service:latest
@@ -171,6 +177,8 @@ jobs:
       - name: Deploy Moderate Service with OIDC (Indonesia Central)
         run: |
           IMG=${{ env.IMG }}
+          RMQUSER=${{ secrets.RABBITMQ_USER }}
+          RMQPASS=${{ secrets.RABBITMQ_PASS }}
           ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.MODERATE_PUBLIC_IP }} << EOF
           docker pull ${IMG}/moderate-service:latest
           mkdir -p /home/azureuser/data
@@ -178,7 +186,7 @@ jobs:
           docker run -d --name moderate --restart unless-stopped \
             -p 4100:3100 \
             -v /home/azureuser/data:/data \
-            -e RABBITMQ_URL=amqp://guest:guest@${{ secrets.RABBITMQ_PUBLIC_IP }}:5672 \
+            -e RABBITMQ_URL=amqp://${RMQUSER}:${RMQPASS}@${{ secrets.RABBITMQ_PUBLIC_IP }}:5672 \
             -e TYPES_CACHE_FILE=/data/types-cache.json \
             -e OIDC_CLIENT_ID=${{ secrets.OIDC_CLIENT_ID }} \
             -e OIDC_ISSUER=${{ secrets.OIDC_ISSUER }} \
