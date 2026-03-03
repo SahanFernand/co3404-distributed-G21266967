@@ -67,6 +67,20 @@ services:
           - /rmq
         strip_path: false
 
+  # RabbitMQ assets - the management UI loads JS/CSS from root paths
+  # e.g. /js/main.js, /css/main.css, /img/ which need proxying to RabbitMQ
+  - name: rabbitmq-assets
+    url: http://rabbitmq:15672
+    routes:
+      - name: rmq-assets
+        paths:
+          - /js
+          - /css
+          - /img
+          - /favicon.ico
+          - /api
+        strip_path: false
+
 plugins:
   # Rate limiting per service - prevents abuse and DDoS
   - name: rate-limiting
@@ -91,6 +105,12 @@ plugins:
     service: rabbitmq-admin
     config:
       minute: 50
+      policy: local
+
+  - name: rate-limiting
+    service: rabbitmq-assets
+    config:
+      minute: 100
       policy: local
 
   # CORS - restricted to Kong gateway (domain + IP fallback)
