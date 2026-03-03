@@ -64,6 +64,17 @@ jobs:
           docker build -t ${{ env.IMAGE_PREFIX }}/kong-gateway:latest ./services/kong
           docker push ${{ env.IMAGE_PREFIX }}/kong-gateway:latest
 
+      - name: Make packages public
+        run: |
+          OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          for PKG in joke-service joke-etl submit-service moderate-service kong-gateway; do
+            curl -s -X PATCH \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/user/packages/container/${PKG}" \
+              -d '{"visibility":"public"}' || true
+          done
+
   # ===========================================
   # JOB 2: Deploy to Azure VMs (Multi-Region)
   # ===========================================
@@ -108,7 +119,6 @@ jobs:
         run: |
           IMG=${{ env.IMG }}
           ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.JOKE_PUBLIC_IP }} << EOF
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           docker pull ${IMG}/joke-service:latest
           docker pull ${IMG}/joke-etl:latest
           docker network create joke-net 2>/dev/null || true
@@ -146,7 +156,6 @@ jobs:
         run: |
           IMG=${{ env.IMG }}
           ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.SUBMIT_PUBLIC_IP }} << EOF
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           docker pull ${IMG}/submit-service:latest
           mkdir -p /home/azureuser/data
           docker rm -f submit 2>/dev/null || true
@@ -163,7 +172,6 @@ jobs:
         run: |
           IMG=${{ env.IMG }}
           ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.MODERATE_PUBLIC_IP }} << EOF
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           docker pull ${IMG}/moderate-service:latest
           mkdir -p /home/azureuser/data
           docker rm -f moderate 2>/dev/null || true
@@ -184,7 +192,6 @@ jobs:
         run: |
           IMG=${{ env.IMG }}
           ssh -o StrictHostKeyChecking=no azureuser@${{ secrets.KONG_PUBLIC_IP }} << EOF
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           docker pull ${IMG}/kong-gateway:latest
           docker rm -f kong 2>/dev/null || true
           docker run -d --name kong --restart unless-stopped \
