@@ -63,6 +63,15 @@ body {
 
 .brand-icon { font-size: 1.5rem; }
 
+.nav-toggle {
+    display: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-dark);
+    padding: 4px;
+}
+
 .nav-links { display: flex; gap: 8px; flex: 1; }
 
 .nav-link {
@@ -343,8 +352,18 @@ body {
 .hidden { display: none !important; }
 
 @media (max-width: 768px) {
-    .nav-container { padding: 0 16px; gap: 16px; }
-    .nav-links { display: none; }
+    .nav-container { padding: 0 16px; gap: 12px; flex-wrap: wrap; height: auto; min-height: 56px; }
+    .nav-toggle { display: block; margin-left: auto; }
+    .nav-links {
+        display: none;
+        width: 100%;
+        flex-direction: column;
+        gap: 4px;
+        padding-bottom: 12px;
+    }
+    .nav-links.open { display: flex; }
+    .nav-link { padding: 10px 16px; }
+    .nav-auth { width: 100%; padding-bottom: 8px; }
     .hero h1 { font-size: 1.8rem; }
     .features-container { grid-template-columns: 1fr; gap: 16px; }
     .dash-header { flex-direction: column; }
