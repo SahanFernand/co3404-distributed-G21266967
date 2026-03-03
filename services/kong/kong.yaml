@@ -67,10 +67,11 @@ services:
           - /rmq
         strip_path: false
 
-  # RabbitMQ assets - the management UI loads JS/CSS from root paths
-  # e.g. /js/main.js, /css/main.css, /img/ which need proxying to RabbitMQ
+  # RabbitMQ assets - the management UI HTML references js/main.js, css/main.css
+  # which the browser resolves to /js/, /css/ etc. RabbitMQ serves them under /rmq/
+  # so we point the service URL to /rmq and let Kong prepend it
   - name: rabbitmq-assets
-    url: http://rabbitmq:15672
+    url: http://rabbitmq:15672/rmq
     routes:
       - name: rmq-assets
         paths:
