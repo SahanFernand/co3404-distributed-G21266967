@@ -49,6 +49,18 @@ async function checkAuth() {
             navUserName.textContent = data.user.name;
             navLoginBtn.classList.add('hidden');
             navUser.classList.remove('hidden');
+
+            if (data.isModerator === false) {
+                // Authenticated but not a moderator
+                landingPage.classList.remove('hidden');
+                dashboardPage.classList.add('hidden');
+                const heroSub = landingPage.querySelector('.hero-subtitle');
+                if (heroSub) heroSub.textContent = 'Access denied. Your account is not authorized to moderate jokes. Contact an administrator.';
+                const heroBtn = landingPage.querySelector('.btn-hero');
+                if (heroBtn) heroBtn.classList.add('hidden');
+                return false;
+            }
+
             landingPage.classList.add('hidden');
             dashboardPage.classList.remove('hidden');
             return true;
@@ -100,6 +112,11 @@ async function fetchJoke() {
 
         if (response.status === 401) {
             showMessage('Please login to moderate jokes', 'error');
+            return;
+        }
+
+        if (response.status === 403) {
+            showMessage('Access denied - you are not an authorized moderator', 'error');
             return;
         }
 

@@ -44,6 +44,12 @@ const TYPES_CACHE_FILE = process.env.TYPES_CACHE_FILE || '/data/types-cache.json
 let rabbitConnection;
 let rabbitChannel;
 
+// Allowed moderators - only these emails can access the moderation dashboard
+// Set via ALLOWED_MODERATORS env var (comma-separated emails)
+const ALLOWED_MODERATORS = process.env.ALLOWED_MODERATORS
+    ? process.env.ALLOWED_MODERATORS.split(',').map(e => e.trim().toLowerCase())
+    : [];
+
 // OIDC Configuration (Auth0)
 // Production: Set OIDC_CLIENT_ID, OIDC_ISSUER, OIDC_SECRET, BASE_URL
 // Development: Falls back to mock authentication when env vars are not set
@@ -124,6 +130,28 @@ if (oidcEnabled) {
 
 app.use(express.static(path.join(__dirname, 'public'), { etag: false, lastModified: false, setHeaders: (res) => { res.set('Cache-Control', 'no-store'); } }));
 
+/**
+ * Middleware: check if authenticated user is an allowed moderator
+ * Used on protected endpoints alongside requiresAuth()
+ */
+function requiresModerator() {
+    return (req, res, next) => {
+        // If no allowlist configured, allow all authenticated users
+        if (ALLOWED_MODERATORS.length === 0) return next();
+
+        const email = req.oidc?.user?.email?.toLowerCase();
+        if (email && ALLOWED_MODERATORS.includes(email)) {
+            return next();
+        }
+
+        console.log(`Access denied for ${email} - not in moderators list`);
+        res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not authorized to moderate jokes. Contact an administrator.'
+        });
+    };
+}
+
 // ============ Public Endpoints ============
 
 /**
@@ -144,8 +172,11 @@ app.get('/health', (req, res) => {
  */
 app.get('/auth/status', (req, res) => {
     if (req.oidc && req.oidc.isAuthenticated()) {
+        const email = req.oidc.user.email?.toLowerCase();
+        const isModerator = ALLOWED_MODERATORS.length === 0 || ALLOWED_MODERATORS.includes(email);
         res.json({
             authenticated: true,
+            isModerator,
             user: {
                 name: req.oidc.user.name || req.oidc.user.email,
                 email: req.oidc.user.email
@@ -176,7 +207,7 @@ app.get('/types', async (req, res) => {
  * Get next joke for moderation
  * Fetches from the 'submit' queue
  */
-app.get('/moderate', requiresAuth(), async (req, res) => {
+app.get('/moderate', requiresAuth(), requiresModerator(), async (req, res) => {
     try {
         if (!rabbitChannel) {
             return res.status(503).json({ error: 'Message queue not available' });
@@ -215,7 +246,7 @@ app.get('/moderate', requiresAuth(), async (req, res) => {
  * Submit moderated (approved) joke
  * Publishes to 'moderated' queue for ETL processing
  */
-app.post('/moderated', requiresAuth(), async (req, res) => {
+app.post('/moderated', requiresAuth(), requiresModerator(), async (req, res) => {
     try {
         const { setup, punchline, type, _deliveryTag } = req.body;
 
@@ -264,7 +295,7 @@ app.post('/moderated', requiresAuth(), async (req, res) => {
 /**
  * Reject a joke (remove from queue without processing)
  */
-app.post('/reject', requiresAuth(), async (req, res) => {
+app.post('/reject', requiresAuth(), requiresModerator(), async (req, res) => {
     try {
         const { _deliveryTag, reason } = req.body;
 

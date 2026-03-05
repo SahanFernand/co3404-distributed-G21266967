@@ -191,6 +191,7 @@ jobs:
             -e OIDC_CLIENT_ID=${{ secrets.OIDC_CLIENT_ID }} \
             -e OIDC_ISSUER=${{ secrets.OIDC_ISSUER }} \
             -e OIDC_SECRET=${{ secrets.OIDC_SECRET }} \
+            -e ALLOWED_MODERATORS=${{ secrets.ALLOWED_MODERATORS }} \
             -e BASE_URL=https://g21266967.duckdns.org \
             -e POST_LOGIN_REDIRECT=/moderate-ui \
             ${IMG}/moderate-service:latest
