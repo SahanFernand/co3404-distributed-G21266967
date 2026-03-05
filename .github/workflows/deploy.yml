@@ -7,7 +7,7 @@
 #
 # Uses GitHub Container Registry (ghcr.io) for Docker images
 # All VMs have public IPs — SSH directly to each VM
-# Kong still serves as the API gateway (single entry point for users)
+# Kong serves as the API gateway (single entry point for users)
 
 name: CI/CD Pipeline - CO3404
 
