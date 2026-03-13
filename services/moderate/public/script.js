@@ -319,8 +319,10 @@ function switchTab(tab) {
         fetchHistory();
         stopPolling();
     } else {
-        // Only fetch a new joke if there isn't one already loaded
-        if (!currentJoke) {
+        // Re-display the current joke if one is loaded, otherwise fetch new
+        if (currentJoke) {
+            displayJoke(currentJoke);
+        } else {
             fetchJoke();
         }
     }
