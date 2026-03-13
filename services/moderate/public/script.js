@@ -128,12 +128,14 @@ async function fetchJoke() {
         }
 
         const data = await response.json();
-        queueCount.textContent = data.queueSize || 0;
 
         if (data.joke) {
+            // +1 to include the joke currently being reviewed
+            queueCount.textContent = (data.queueSize || 0) + 1;
             displayJoke(data.joke);
             stopPolling();
         } else {
+            queueCount.textContent = 0;
             showNoJokes();
             startPolling();
         }
