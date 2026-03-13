@@ -40,9 +40,11 @@ const SUBMIT_QUEUE = 'submit';
 const MODERATED_QUEUE = 'moderated';
 const TYPE_UPDATE_EXCHANGE = 'type_update';
 const TYPES_CACHE_FILE = process.env.TYPES_CACHE_FILE || '/data/types-cache.json';
+const HISTORY_FILE = process.env.HISTORY_FILE || '/data/moderation-history.json';
 
 let rabbitConnection;
 let rabbitChannel;
+let moderationHistory = [];
 
 // Allowed moderators - only these emails can access the moderation dashboard
 // Set via ALLOWED_MODERATORS env var (comma-separated emails)
@@ -201,6 +203,26 @@ app.get('/types', async (req, res) => {
     }
 });
 
+/**
+ * Get moderation history (protected)
+ */
+app.get('/history', requiresAuth(), requiresModerator(), async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+        const offset = parseInt(req.query.offset) || 0;
+        const history = moderationHistory.slice(offset, offset + limit);
+        const stats = {
+            total: moderationHistory.length,
+            approved: moderationHistory.filter(h => h.status === 'approved').length,
+            rejected: moderationHistory.filter(h => h.status === 'rejected').length
+        };
+        res.json({ history, stats });
+    } catch (error) {
+        console.error('Error fetching history:', error);
+        res.status(500).json({ error: 'Failed to fetch history' });
+    }
+});
+
 // ============ Protected Endpoints (require authentication) ============
 
 /**
@@ -281,6 +303,13 @@ app.post('/moderated', requiresAuth(), requiresModerator(), async (req, res) => 
 
         console.log('Joke approved by', req.oidc.user?.email);
 
+        // Save to history
+        await addToHistory(
+            { setup: setup.trim(), punchline: punchline.trim(), type: type.trim().toLowerCase(), submittedAt: req.body.submittedAt },
+            'approved',
+            req.oidc.user?.email || 'unknown'
+        );
+
         res.json({
             success: true,
             message: 'Joke approved and forwarded for processing'
@@ -297,7 +326,7 @@ app.post('/moderated', requiresAuth(), requiresModerator(), async (req, res) => 
  */
 app.post('/reject', requiresAuth(), requiresModerator(), async (req, res) => {
     try {
-        const { _deliveryTag, reason } = req.body;
+        const { _deliveryTag, reason, setup, punchline, type } = req.body;
 
         // Acknowledge (remove) the message from queue
         if (_deliveryTag && rabbitChannel) {
@@ -308,6 +337,13 @@ app.post('/reject', requiresAuth(), requiresModerator(), async (req, res) => {
                 console.log('Could not ack message:', e.message);
             }
         }
+
+        // Save to history
+        await addToHistory(
+            { setup: setup || 'Unknown', punchline: punchline || 'Unknown', type: type || 'unknown', submittedAt: req.body.submittedAt },
+            'rejected',
+            req.oidc.user?.email || 'unknown'
+        );
 
         res.json({ success: true, message: 'Joke rejected' });
 
@@ -323,6 +359,52 @@ app.get('/', (req, res) => {
 });
 
 // ============ Helper Functions ============
+
+/**
+ * Read moderation history from disk
+ */
+async function loadHistory() {
+    try {
+        const data = await fs.readFile(HISTORY_FILE, 'utf8');
+        moderationHistory = JSON.parse(data);
+    } catch (e) {
+        moderationHistory = [];
+    }
+}
+
+/**
+ * Save moderation history to disk
+ */
+async function saveHistory() {
+    try {
+        const dir = path.dirname(HISTORY_FILE);
+        await fs.mkdir(dir, { recursive: true }).catch(() => {});
+        await fs.writeFile(HISTORY_FILE, JSON.stringify(moderationHistory, null, 2));
+    } catch (error) {
+        console.error('Failed to save history:', error.message);
+    }
+}
+
+/**
+ * Add entry to moderation history
+ */
+async function addToHistory(joke, status, moderator) {
+    const entry = {
+        id: moderationHistory.length + 1,
+        setup: joke.setup,
+        punchline: joke.punchline,
+        type: joke.type,
+        status,
+        moderatedBy: moderator,
+        submittedAt: joke.submittedAt || null,
+        reviewedAt: new Date().toISOString()
+    };
+    moderationHistory.unshift(entry);
+    // Keep last 200 entries
+    if (moderationHistory.length > 200) moderationHistory = moderationHistory.slice(0, 200);
+    await saveHistory();
+    return entry;
+}
 
 async function readTypesCache() {
     const data = await fs.readFile(TYPES_CACHE_FILE, 'utf8');
@@ -455,6 +537,10 @@ async function start() {
     } catch (error) {
         await updateTypesCache(['general', 'programming', 'dad', 'knock-knock', 'pun']);
     }
+
+    // Load moderation history
+    await loadHistory();
+    console.log(`Loaded ${moderationHistory.length} history entries`);
 
     // Connect to RabbitMQ
     connectToRabbitMQ();

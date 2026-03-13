@@ -24,6 +24,12 @@ const messageEl = document.getElementById('message');
 const statusEl = document.getElementById('status');
 const approvedCountEl = document.getElementById('approvedCount');
 const rejectedCountEl = document.getElementById('rejectedCount');
+const pendingSection = document.getElementById('pendingSection');
+const historySection = document.getElementById('historySection');
+const historyList = document.getElementById('historyList');
+const tabPending = document.getElementById('tabPending');
+const tabHistory = document.getElementById('tabHistory');
+const refreshHistoryBtn = document.getElementById('refreshHistory');
 
 // State
 let currentJoke = null;
@@ -31,6 +37,7 @@ let pollingInterval = null;
 let approvedCount = 0;
 let rejectedCount = 0;
 let isAuthenticated = false;
+let currentTab = 'pending';
 
 // API Base URL
 // Detect base path from current URL for Kong gateway routing
@@ -206,7 +213,8 @@ async function approveJoke(e) {
                 setup: setupInput.value.trim(),
                 punchline: punchlineInput.value.trim(),
                 type: type.toLowerCase(),
-                _deliveryTag: currentJoke._deliveryTag
+                _deliveryTag: currentJoke._deliveryTag,
+                submittedAt: currentJoke.submittedAt
             })
         });
 
@@ -243,7 +251,11 @@ async function rejectJoke() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 _deliveryTag: currentJoke._deliveryTag,
-                reason: 'Rejected by moderator'
+                reason: 'Rejected by moderator',
+                setup: currentJoke.setup,
+                punchline: currentJoke.punchline,
+                type: currentJoke.type,
+                submittedAt: currentJoke.submittedAt
             })
         });
 
@@ -293,11 +305,96 @@ async function checkHealth() {
     }
 }
 
+/**
+ * Switch between Pending Review and History tabs
+ */
+function switchTab(tab) {
+    currentTab = tab;
+    tabPending.classList.toggle('active', tab === 'pending');
+    tabHistory.classList.toggle('active', tab === 'history');
+    pendingSection.classList.toggle('hidden', tab !== 'pending');
+    historySection.classList.toggle('hidden', tab !== 'history');
+
+    if (tab === 'history') {
+        fetchHistory();
+        stopPolling();
+    } else {
+        fetchJoke();
+    }
+}
+
+/**
+ * Fetch moderation history from backend
+ */
+async function fetchHistory() {
+    if (!isAuthenticated) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/history`);
+        if (response.status === 403) return;
+        const data = await response.json();
+
+        // Update stats from history
+        if (data.stats) {
+            approvedCount = data.stats.approved;
+            rejectedCount = data.stats.rejected;
+            approvedCountEl.textContent = approvedCount;
+            rejectedCountEl.textContent = rejectedCount;
+        }
+
+        renderHistory(data.history || []);
+    } catch (error) {
+        console.error('Error fetching history:', error);
+    }
+}
+
+/**
+ * Render history items
+ */
+function renderHistory(items) {
+    if (!items.length) {
+        historyList.innerHTML = '<div class="empty-state"><p>No moderation history yet.</p></div>';
+        return;
+    }
+
+    historyList.innerHTML = items.map(item => {
+        const submitted = item.submittedAt ? new Date(item.submittedAt).toLocaleString() : '';
+        const reviewed = new Date(item.reviewedAt).toLocaleString();
+        const statusClass = item.status === 'approved' ? 'status-approved' : 'status-rejected';
+
+        return `
+            <div class="history-item">
+                <div class="history-item-header">
+                    <span class="history-meta">ID: ${item.id}${submitted ? '&nbsp;&nbsp;&nbsp;' + submitted : ''} &bull; Reviewed: ${reviewed}</span>
+                    <span class="history-status ${statusClass}">${item.status}</span>
+                </div>
+                <span class="history-type">${item.type}</span>
+                <div class="history-joke">
+                    <strong>${escapeHtml(item.setup)}</strong>
+                    <p>${escapeHtml(item.punchline)}</p>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+/**
+ * Escape HTML to prevent XSS
+ */
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+}
+
 // Event Listeners
 moderationForm.addEventListener('submit', approveJoke);
 rejectBtn.addEventListener('click', rejectJoke);
 jokeTypeSelect.addEventListener('change', () => { if (jokeTypeSelect.value) customTypeInput.value = ''; });
 customTypeInput.addEventListener('input', () => { if (customTypeInput.value) jokeTypeSelect.value = ''; });
+tabPending.addEventListener('click', () => switchTab('pending'));
+tabHistory.addEventListener('click', () => switchTab('history'));
+refreshHistoryBtn.addEventListener('click', fetchHistory);
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {

@@ -80,7 +80,7 @@
                 <div class="dash-stats">
                     <div class="mini-stat queue">
                         <span class="mini-stat-value" id="queueCount">-</span>
-                        <span class="mini-stat-label">In Queue</span>
+                        <span class="mini-stat-label">Pending</span>
                     </div>
                     <div class="mini-stat approved">
                         <span class="mini-stat-value" id="approvedCount">0</span>
@@ -93,6 +93,12 @@
                 </div>
             </div>
 
+            <div class="tab-bar">
+                <button class="tab active" id="tabPending" data-tab="pending">Pending Review</button>
+                <button class="tab" id="tabHistory" data-tab="history">History</button>
+            </div>
+
+            <div id="pendingSection">
             <div class="mod-card">
                 <div class="mod-card-header">
                     <h2>Review Joke</h2>
@@ -134,6 +140,21 @@
                     <p>Processing...</p>
                 </div>
                 <div id="message" class="toast hidden"></div>
+            </div>
+            </div>
+
+            <div id="historySection" class="hidden">
+                <div class="mod-card">
+                    <div class="mod-card-header">
+                        <h2>Moderation History</h2>
+                        <button class="btn-refresh" id="refreshHistory">Refresh</button>
+                    </div>
+                    <div id="historyList" class="history-list">
+                        <div class="empty-state">
+                            <p>No moderation history yet.</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
