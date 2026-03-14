@@ -1,4 +1,4 @@
-/ # 04 - RabbitMQ & ETL Service
+# 04 - RabbitMQ & ETL Service
 
 ---
 
@@ -6,8 +6,8 @@
 
 **Image:** `rabbitmq:3.12-management-alpine`
 **Ports:** 5672 (AMQP), 15672 (Management UI)
-**Credentials:** guest / guest
-**Management UI:** http://localhost:15672
+**Credentials:** Stored as GitHub Secrets (`RABBITMQ_USER` / `RABBITMQ_PASS`)
+**Management UI:** `https://g21266967.duckdns.org/rmq` (via Kong) or `http://localhost:15672` (local)
 
 ### Queues
 
@@ -56,6 +56,12 @@ Database (MySQL or MongoDB)
 - **Manual acknowledgment:** Messages only removed after successful processing
 - **Fanout exchange:** type_update events broadcast to all subscribers
 - **Named queues:** `submit_type_updates` and `moderate_type_updates` for each subscriber
+- **Custom credentials:** Secured with non-default username/password (stored as GitHub Secrets)
+- **Rate limited:** Kong limits RabbitMQ management UI to 50 requests/min
+
+### RabbitMQ Assets Service (Kong)
+
+The RabbitMQ management UI requires static assets (`/js`, `/css`, `/img`, `/api`). Kong proxies these through a dedicated `rabbitmq-assets` service so the management UI loads correctly when accessed via `https://g21266967.duckdns.org/rmq`.
 
 ---
 
@@ -117,7 +123,7 @@ async function processMessage(msg) {
 | `DB_PASSWORD` | `jokepassword` | MySQL password |
 | `DB_NAME` | `jokedb` | Database name |
 | `MONGO_URL` | `mongodb://mongodb:27017` | MongoDB connection |
-| `RABBITMQ_URL` | `amqp://guest:guest@rabbitmq:5672` | RabbitMQ connection |
+| `RABBITMQ_URL` | `amqp://guest:guest@rabbitmq:5672` | RabbitMQ connection (uses custom creds on Azure) |
 
 ### Connection Retry Logic
 
@@ -145,7 +151,7 @@ This is needed because RabbitMQ takes longer to start than the Node.js services.
 
 ## Demonstrating in Video
 
-1. Open RabbitMQ Management at http://localhost:15672
+1. Open RabbitMQ Management at `https://g21266967.duckdns.org/rmq`
 2. Submit a joke via the Submit UI
 3. Show the message appearing in the `submit` queue
 4. Moderate the joke (approve it)

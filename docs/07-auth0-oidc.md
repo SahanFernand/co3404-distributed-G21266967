@@ -1,4 +1,4 @@
-# 07 - Auth0 OIDC Authentication
+# 07 - Auth0 OIDC Authentication + RBAC
 
 **Requirement:** Very High 1st (79-84%)
 **Library:** `express-openid-connect` v2.17.1
@@ -7,12 +7,13 @@
 
 ## What Was Implemented
 
-The Moderate service requires authenticated access for privileged moderation operations. We use OpenID Connect (OIDC) via **Auth0** as the identity provider.
+The Moderate service requires authenticated access for privileged moderation operations. We use OpenID Connect (OIDC) via **Auth0** as the identity provider, with server-side RBAC (Role-Based Access Control) to restrict moderation to specific email addresses.
 
-**Protected endpoints (require login):**
+**Protected endpoints (require login + RBAC):**
 - `GET /moderate`
 - `POST /moderated`
 - `POST /reject`
+- `GET /history`
 
 **Public endpoints (no auth):**
 - `GET /types`, `GET /health`, `GET /auth/status`
@@ -25,12 +26,14 @@ The Moderate service requires authenticated access for privileged moderation ope
 1. User visits Moderate UI
 2. Clicks "Login"
 3. Browser redirects to Auth0 login page
-4. User enters credentials (email/password or social login)
+4. User enters credentials (email/password or Google social login)
 5. Auth0 validates, issues authorization code
 6. Auth0 redirects to /callback?code=...
 7. express-openid-connect exchanges code for tokens
-8. Session created, user can access protected routes
-9. On logout: session destroyed, redirected to Auth0 logout
+8. Session created, RBAC check: is email in ALLOWED_MODERATORS?
+9. If allowed: user can access protected routes
+10. If not allowed: returns 403 Forbidden
+11. On logout: session destroyed, redirected to Auth0 logout
 ```
 
 ---
@@ -64,9 +67,9 @@ Allowed Web Origins:      http://localhost:4100
 
 **For Azure deployment (add as comma-separated):**
 ```
-Allowed Callback URLs:    http://localhost:4100/callback, http://<KONG_IP>/callback
-Allowed Logout URLs:      http://localhost:4100, http://<KONG_IP>/moderate-ui
-Allowed Web Origins:      http://localhost:4100, http://<KONG_IP>
+Allowed Callback URLs:    http://localhost:4100/callback, https://g21266967.duckdns.org/callback
+Allowed Logout URLs:      http://localhost:4100, https://g21266967.duckdns.org/moderate-ui
+Allowed Web Origins:      http://localhost:4100, https://g21266967.duckdns.org
 ```
 
 Click **Save Changes**.
@@ -74,9 +77,11 @@ Click **Save Changes**.
 ### Step 4 - Note Credentials
 
 Copy from the application settings page:
-- **Domain** (e.g., `co3404-jokes.eu.auth0.com`)
+- **Domain** (e.g., `your-tenant.us.auth0.com`)
 - **Client ID**
 - **Client Secret**
+
+These are stored as GitHub Secrets for CI/CD deployment (never committed to code).
 
 ### Step 5 - Create .env File
 
@@ -84,7 +89,7 @@ Create `.env` in the project root:
 
 ```bash
 OIDC_CLIENT_ID=your-auth0-client-id
-OIDC_ISSUER=https://your-tenant.eu.auth0.com
+OIDC_ISSUER=https://your-tenant.us.auth0.com
 OIDC_SECRET=your-auth0-client-secret
 MODERATE_BASE_URL=http://localhost:4100
 ```
@@ -150,12 +155,29 @@ if (oidcEnabled) {
 }
 ```
 
+### RBAC Middleware (app.js)
+
+```javascript
+const allowedModerators = (process.env.ALLOWED_MODERATORS || '')
+    .split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+
+function requiresModerator(req, res, next) {
+    if (allowedModerators.length === 0) return next(); // No restriction if empty
+    const userEmail = req.oidc?.user?.email?.toLowerCase();
+    if (!allowedModerators.includes(userEmail)) {
+        return res.status(403).json({ error: 'Access denied. Not an authorised moderator.' });
+    }
+    next();
+}
+```
+
 ### Protected Routes
 
 ```javascript
-app.get('/moderate', requiresAuth(), async (req, res) => { ... });
-app.post('/moderated', requiresAuth(), async (req, res) => { ... });
-app.post('/reject', requiresAuth(), async (req, res) => { ... });
+app.get('/moderate', requiresAuth(), requiresModerator, async (req, res) => { ... });
+app.post('/moderated', requiresAuth(), requiresModerator, async (req, res) => { ... });
+app.post('/reject', requiresAuth(), requiresModerator, async (req, res) => { ... });
+app.get('/history', requiresAuth(), requiresModerator, async (req, res) => { ... });
 ```
 
 ### Kong Routes for OIDC
@@ -171,21 +193,6 @@ app.post('/reject', requiresAuth(), async (req, res) => { ... });
 
 ---
 
-## Optional: Restrict by Email
-
-In Auth0 Dashboard > **Actions** > **Triggers** > **post-login**, add:
-
-```javascript
-exports.onExecutePostLogin = async (event, api) => {
-  const allowedEmails = ['your-email@example.com'];
-  if (!allowedEmails.includes(event.user.email)) {
-    api.access.deny('Access restricted to authorised moderators');
-  }
-};
-```
-
----
-
 ## Docker Compose OIDC Variables
 
 ```yaml
@@ -195,24 +202,27 @@ moderate:
     - OIDC_ISSUER=${OIDC_ISSUER:-}
     - OIDC_SECRET=${OIDC_SECRET:-}
     - BASE_URL=${MODERATE_BASE_URL:-http://localhost:4100}
+    - ALLOWED_MODERATORS=${ALLOWED_MODERATORS:-}
 ```
 
 When empty, OIDC is disabled and mock auth is used.
 
 ---
 
-## CI/CD OIDC Secrets
+## CI/CD OIDC + RBAC Secrets
 
-In the GitHub Actions pipeline, OIDC credentials are passed as secrets:
+In the GitHub Actions pipeline, OIDC credentials and RBAC config are passed as secrets:
 
 ```yaml
-- name: Deploy Moderate Service (with OIDC)
+- name: Deploy Moderate Service (with OIDC + RBAC)
   run: |
     docker run -d --name moderate \
       -e OIDC_CLIENT_ID=${{ secrets.OIDC_CLIENT_ID }} \
       -e OIDC_ISSUER=${{ secrets.OIDC_ISSUER }} \
       -e OIDC_SECRET=${{ secrets.OIDC_SECRET }} \
-      -e BASE_URL=http://${{ secrets.KONG_PUBLIC_IP }}/moderate-ui \
+      -e ALLOWED_MODERATORS=${{ secrets.ALLOWED_MODERATORS }} \
+      -e BASE_URL=https://g21266967.duckdns.org \
+      -e POST_LOGIN_REDIRECT=/moderate-ui \
       moderate-service:latest
 ```
 
@@ -225,6 +235,8 @@ In the GitHub Actions pipeline, OIDC credentials are passed as secrets:
 3. Enter credentials, log in
 4. Show authenticated user name in header
 5. Moderate a joke (approve)
-6. Logout
-7. Show 401 when accessing /moderate without login
-8. Show console: "OIDC authentication ENABLED via Auth0"
+6. Show History tab with moderation decisions
+7. Logout
+8. Show 401 when accessing /moderate without login
+9. (Optional) Log in with an unauthorised email - show 403 RBAC denial
+10. Show console: "OIDC authentication ENABLED via Auth0"

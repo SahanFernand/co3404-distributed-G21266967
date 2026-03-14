@@ -8,17 +8,18 @@ This is a complete end-to-end walkthrough of the system — from a user submitti
 
 ## The Big Picture
 
-There are 5 microservices, 1 message broker, and 1 or 2 databases:
+There are 5 microservices, 1 message broker, and 1 or 2 databases, accessible via HTTPS through a DuckDNS domain:
 
 ```
 USER BROWSER
     |
     v
-[Kong API Gateway]  <-- single entry point, port 80
+[Kong API Gateway]  <-- single entry point, HTTPS via Let's Encrypt
+[https://g21266967.duckdns.org]
     |
     +---> [Joke Service]     --> reads jokes from DB, serves Joke UI
     +---> [Submit Service]   --> accepts new jokes, puts on queue
-    +---> [Moderate Service] --> moderator reviews jokes (Auth0 login)
+    +---> [Moderate Service] --> moderator reviews jokes (Auth0 + RBAC)
     |
     v
 [RabbitMQ]  <-- message broker, 2 queues + 1 fanout exchange
@@ -38,7 +39,7 @@ Here is exactly what happens when someone submits a joke, step by step:
 
 ### Step 1: User Opens Submit UI
 
-- Browser hits `http://localhost:4200` (or `http://<KONG_IP>/submit-ui` via Kong)
+- Browser hits `http://localhost:4200` (or `https://g21266967.duckdns.org/submit-ui` via Kong)
 - Submit service serves `public/index.html` as static content
 - The UI JavaScript calls `GET /types` to populate the type dropdown
 - Submit service tries to fetch types from the Joke service (`GET http://joke:3000/types`)
@@ -56,20 +57,22 @@ Here is exactly what happens when someone submits a joke, step by step:
 
 - The joke message sits in the `submit` queue
 - It is **persistent** (survives RabbitMQ restart because `durable: true`)
-- You can see it in RabbitMQ Management UI at `http://localhost:15672`
+- You can see it in RabbitMQ Management UI at `https://g21266967.duckdns.org/rmq`
 
 ### Step 4: Moderator Opens Moderate UI
 
-- Moderator visits `http://localhost:4100`
-- If Auth0 OIDC is enabled, they must **log in** first (redirected to Auth0)
-- After login, the UI JavaScript calls `GET /moderate`
+- Moderator visits `https://g21266967.duckdns.org/moderate-ui`
+- Auth0 OIDC requires the moderator to **log in** first (redirected to Auth0)
+- After login, **RBAC check**: moderator's email must be in the `ALLOWED_MODERATORS` list
+- If authorised, the UI JavaScript calls `GET /moderate`
 - Moderate service pulls one message from the `submit` queue using `channel.get()`
-- The joke appears in the UI for review
+- The joke appears in the UI for review (Pending Review tab)
 
 ### Step 5: Moderator Reviews
 
 - Moderator can **edit** the setup, punchline, or type
 - Moderator can **change the type** using the dropdown (populated from types cache)
+- Pending count shows queue size + the currently displayed joke
 - If no jokes are waiting, the UI shows "No jokes awaiting moderation" and **polls every 3 seconds**
 
 ### Step 6: Moderator Approves (or Rejects)
@@ -77,12 +80,14 @@ Here is exactly what happens when someone submits a joke, step by step:
 **If Approved:**
 - Browser sends `POST /moderated` with the (possibly edited) joke
 - Moderate service publishes the joke to the **`moderated` queue** in RabbitMQ
+- Decision is saved to **moderation history** (persistent JSON file)
 - Moderate service acknowledges (removes) the original message from the `submit` queue
 - Next joke is automatically fetched
 
 **If Rejected:**
 - Browser sends `POST /reject`
-- Moderate service acknowledges the message (removes it from queue) — it is simply discarded
+- Decision is saved to **moderation history**
+- Moderate service acknowledges the message (removes it from queue)
 - Next joke is fetched
 
 ### Step 7: ETL Processes the Approved Joke
@@ -99,15 +104,15 @@ When ETL detects a new type:
 
 - ETL publishes to the `type_update` **fanout exchange**: `{ event: 'type_added', type: 'science' }`
 - RabbitMQ fans this out to all bound queues:
-  - `submit_type_updates` queue → Submit service receives it → updates `types-cache.json`
-  - `moderate_type_updates` queue → Moderate service receives it → updates `types-cache.json`
+  - `submit_type_updates` queue -> Submit service receives it -> updates `types-cache.json`
+  - `moderate_type_updates` queue -> Moderate service receives it -> updates `types-cache.json`
 - Now both Submit and Moderate have the new type in their dropdowns **without calling the Joke API**
 - This is the **Event-Carried State Transfer** pattern — the event carries the data, so subscribers stay in sync
 
 ### Step 9: Joke Appears in the System
 
 - The joke is now in the database (MySQL or MongoDB)
-- User visits the Joke UI at `http://localhost:4000`
+- User visits the Joke UI at `https://g21266967.duckdns.org/joke-ui`
 - Selects a type, clicks "Get Joke"
 - Joke service queries the database: `SELECT ... ORDER BY RAND() LIMIT 1`
 - Setup appears, punchline reveals after 3 seconds
@@ -117,7 +122,7 @@ When ETL detects a new type:
 ## How Each Service Connects
 
 ```
-                    [Kong :80]
+                    [Kong :80/:443]
                         |
           +-------------+-------------+
           |             |             |
@@ -169,19 +174,20 @@ Docker Compose uses **profiles** to start only one database:
 
 ---
 
-## How Authentication Works
+## How Authentication and RBAC Works
 
 When `OIDC_CLIENT_ID` and `OIDC_ISSUER` are set:
 
 1. `express-openid-connect` middleware intercepts requests to protected routes
-2. If no valid session → redirect to Auth0 login page
-3. Auth0 handles login (email/password, social, etc.)
+2. If no valid session -> redirect to Auth0 login page
+3. Auth0 handles login (email/password, social login via Google, etc.)
 4. Auth0 redirects back to `/callback` with an authorization code
 5. The library exchanges the code for tokens, creates a session
-6. Subsequent requests include the session cookie → access granted
-7. `requiresAuth()` middleware on `/moderate`, `/moderated`, `/reject` enforces this
+6. **RBAC check**: `requiresModerator` middleware verifies user's email is in `ALLOWED_MODERATORS`
+7. If email is not allowed -> returns 403 Forbidden
+8. If allowed -> `requiresAuth()` middleware on `/moderate`, `/moderated`, `/reject`, `/history` grants access
 
-When env vars are NOT set → mock auth is used (always authenticated as "Dev Moderator").
+When env vars are NOT set -> mock auth is used (always authenticated as "Dev Moderator").
 
 ---
 
@@ -194,13 +200,14 @@ On every push to `main`:
     |
     +-- Job 1: Build & Push
     |       Build 5 Docker images
-    |       Push to Docker Hub
+    |       Push to GitHub Container Registry (ghcr.io)
     |
     +-- Job 2: Deploy (Multi-Region)
             SSH directly to each VM's public IP
+            Setup SSL certificate (Let's Encrypt)
             Pull images, stop old containers, start new ones
-            East Asia: RabbitMQ → Joke+MySQL+ETL → Kong
-            Indonesia Central: Submit → Moderate
+            East Asia: RabbitMQ -> Joke+MySQL+ETL -> Kong
+            Indonesia Central: Submit -> Moderate
 ```
 
 All VMs have public IPs, so the pipeline SSHs directly to each one — no jump host needed for deployment. Cross-region services connect via public IPs.
@@ -215,17 +222,17 @@ terraform apply
     +-- EAST ASIA REGION
     |     +-- Resource Group: co3404-jokes-eastasia
     |     +-- VNet: 10.0.0.0/16, Subnet: 10.0.1.0/24
-    |     +-- NSG: Allow SSH, HTTP, HTTPS, VNet, ServicePorts
-    |     +-- kong-vm     (10.0.1.10) + Public IP  ← API Gateway
-    |     +-- joke-vm     (10.0.1.20) + Public IP  ← Joke+MySQL+ETL
-    |     +-- rabbitmq-vm (10.0.1.50) + Public IP  ← Message Broker
+    |     +-- NSG: Hardened firewall rules
+    |     +-- kong-vm     (10.0.1.10) + Public IP  <- API Gateway + SSL
+    |     +-- joke-vm     (10.0.1.20) + Public IP  <- Joke+MySQL+ETL
+    |     +-- rabbitmq-vm (10.0.1.50) + Public IP  <- Message Broker
     |
-    +-- WEST US 2 REGION
+    +-- INDONESIA CENTRAL REGION
     |     +-- Resource Group: co3404-jokes-indonesia
     |     +-- VNet: 10.1.0.0/16, Subnet: 10.1.1.0/24
-    |     +-- NSG: Allow SSH, HTTP, HTTPS, VNet, ServicePorts
-    |     +-- submit-vm   (10.1.1.30) + Public IP  ← Submit Service
-    |     +-- moderate-vm (10.1.1.40) + Public IP  ← Moderate Service
+    |     +-- NSG: Hardened firewall rules
+    |     +-- submit-vm   (10.1.1.30) + Public IP  <- Submit Service
+    |     +-- moderate-vm (10.1.1.40) + Public IP  <- Moderate Service
     |
     +-- SHARED: SSH Key (4096-bit RSA), Cloud-init (Docker install)
 ```
@@ -252,3 +259,5 @@ Key resilience features:
 - **Types cache files** — services work offline using cached data
 - **Retry logic** — all services retry RabbitMQ connection 10 times with 5s delay
 - **Health checks** — Docker restarts unhealthy containers automatically
+- **Rate limiting** — Kong protects all services from abuse/DDoS
+- **Security headers** — X-Frame-Options, XSS Protection, Content-Type-Options

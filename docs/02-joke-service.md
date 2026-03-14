@@ -35,7 +35,7 @@ The Joke service is the main data-serving microservice. It stores jokes in a dat
 | `database/db-mongo.js` | MongoDB implementation |
 | `public/index.html` | Joke UI - select type, get joke, punchline reveals after 3 seconds |
 | `public/script.js` | Frontend JavaScript for the Joke UI |
-| `public/styles.css` | Dark-themed responsive CSS |
+| `public/styles.css` | Blue-themed responsive CSS with mobile hamburger menu |
 | `Dockerfile` | Docker image for the Joke API |
 | `Dockerfile.etl` | Docker image for the ETL worker (separate process) |
 | `package.json` | Dependencies: express, cors, mysql2, mongodb, amqplib |

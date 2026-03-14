@@ -108,7 +108,7 @@ curl http://localhost:4000/types
 # 2. Submit a joke
 curl -X POST http://localhost:4200/submit \
   -H "Content-Type: application/json" \
-  -d '{"type":"general","joke":"Why did the chicken cross the road?","answer":"To get to the other side"}'
+  -d '{"setup":"Why did the chicken cross the road?","punchline":"To get to the other side","type":"general"}'
 
 # 3. Check moderate UI for pending jokes
 curl http://localhost:4100/moderate
@@ -165,9 +165,9 @@ Allowed Web Origins:      http://localhost:4100
 
 For Azure deployment, add (comma-separated):
 ```
-Allowed Callback URLs:    http://localhost:4100/callback, http://<KONG_PUBLIC_IP>/callback
-Allowed Logout URLs:      http://localhost:4100, http://<KONG_PUBLIC_IP>/moderate-ui
-Allowed Web Origins:      http://localhost:4100, http://<KONG_PUBLIC_IP>
+Allowed Callback URLs:    http://localhost:4100/callback, https://g21266967.duckdns.org/callback
+Allowed Logout URLs:      http://localhost:4100, https://g21266967.duckdns.org/moderate-ui
+Allowed Web Origins:      http://localhost:4100, https://g21266967.duckdns.org
 ```
 
 Click **Save Changes**.
@@ -175,9 +175,9 @@ Click **Save Changes**.
 ### 3.4 - Note Your Credentials
 
 From the Auth0 application settings, copy:
-- **Domain** dev-ptm68ojcvqrklsnp.us.auth0.com
-- **Client ID** dyZaIGWnM6mTW1sHd7bmMoIDmJbR4KCu
-- **Client Secret** KwyLIzZ7900BILjmvItRJGwvdcj30pi73gINKmsQgW54Orkrzm-yayTHB--e5e6X
+- **Domain** (e.g., `your-tenant.us.auth0.com`)
+- **Client ID**
+- **Client Secret**
 
 ### 3.5 - Create .env File
 
@@ -186,7 +186,7 @@ In the project root:
 ```bash
 cat > .env << 'EOF'
 OIDC_CLIENT_ID=your-auth0-client-id-here
-OIDC_ISSUER=https://your-tenant.eu.auth0.com
+OIDC_ISSUER=https://your-tenant.us.auth0.com
 OIDC_SECRET=your-auth0-client-secret-here
 MODERATE_BASE_URL=http://localhost:4100
 EOF
@@ -266,18 +266,7 @@ terraform output vm_public_ips
 terraform output ssh_commands
 ```
 
-**SAVE THESE IPs** — you need them for deployment.
-
-Example output:
-```
-vm_public_ips = {
-    "joke" = "10.0.1.20"
-  "kong" = "10.0.1.10"
-  "moderate" = "10.1.1.40"
-  "rabbitmq" = "10.0.1.50"
-  "submit" = "10.1.1.30"
-}
-```
+**SAVE THESE IPs** — you need them for GitHub Secrets and deployment.
 
 ### 4.7 - Wait for Cloud-Init (2-3 mins)
 
@@ -302,28 +291,28 @@ RABBITMQ_IP="<rabbitmq-public-ip>"
 SUBMIT_IP="<submit-public-ip>"
 MODERATE_IP="<moderate-public-ip>"
 SSH_KEY="ssh_key.pem"
-DOCKER_USER="<your-dockerhub-username>"
+IMAGE_PREFIX="ghcr.io/<your-github-username>"
 ```
 
-### 5.2 - Build and Push Docker Images
+### 5.2 - Build and Push Docker Images (GHCR)
 
 ```bash
-# Login to Docker Hub
-docker login
+# Login to GitHub Container Registry
+echo $GITHUB_TOKEN | docker login ghcr.io -u <your-github-username> --password-stdin
 
 # Build all images
-docker build -t $DOCKER_USER/joke-service:latest ../services/joke -f ../services/joke/Dockerfile
-docker build -t $DOCKER_USER/joke-etl:latest ../services/joke -f ../services/joke/Dockerfile.etl
-docker build -t $DOCKER_USER/submit-service:latest ../services/submit
-docker build -t $DOCKER_USER/moderate-service:latest ../services/moderate
-docker build -t $DOCKER_USER/kong-gateway:latest ../services/kong
+docker build -t $IMAGE_PREFIX/joke-service:latest ../services/joke -f ../services/joke/Dockerfile
+docker build -t $IMAGE_PREFIX/joke-etl:latest ../services/joke -f ../services/joke/Dockerfile.etl
+docker build -t $IMAGE_PREFIX/submit-service:latest ../services/submit
+docker build -t $IMAGE_PREFIX/moderate-service:latest ../services/moderate
+docker build -t $IMAGE_PREFIX/kong-gateway:latest ../services/kong
 
 # Push all images
-docker push $DOCKER_USER/joke-service:latest
-docker push $DOCKER_USER/joke-etl:latest
-docker push $DOCKER_USER/submit-service:latest
-docker push $DOCKER_USER/moderate-service:latest
-docker push $DOCKER_USER/kong-gateway:latest
+docker push $IMAGE_PREFIX/joke-service:latest
+docker push $IMAGE_PREFIX/joke-etl:latest
+docker push $IMAGE_PREFIX/submit-service:latest
+docker push $IMAGE_PREFIX/moderate-service:latest
+docker push $IMAGE_PREFIX/kong-gateway:latest
 ```
 
 ### 5.3 - Deploy RabbitMQ (East Asia)
@@ -335,8 +324,9 @@ docker rm -f rabbitmq 2>/dev/null || true
 docker run -d --name rabbitmq --restart unless-stopped \
   -p 5672:5672 -p 15672:15672 \
   -v rabbitmq_data:/var/lib/rabbitmq \
-  -e RABBITMQ_DEFAULT_USER=guest \
-  -e RABBITMQ_DEFAULT_PASS=guest \
+  -v /home/azureuser/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro \
+  -e RABBITMQ_DEFAULT_USER=<your-rmq-user> \
+  -e RABBITMQ_DEFAULT_PASS=<your-rmq-pass> \
   rabbitmq:3.12-management-alpine
 EOF
 ```
@@ -347,8 +337,8 @@ Wait 15-20 seconds for RabbitMQ to start.
 
 ```bash
 ssh -i $SSH_KEY azureuser@$JOKE_IP << EOF
-docker pull $DOCKER_USER/joke-service:latest
-docker pull $DOCKER_USER/joke-etl:latest
+docker pull $IMAGE_PREFIX/joke-service:latest
+docker pull $IMAGE_PREFIX/joke-etl:latest
 docker network create joke-net 2>/dev/null || true
 
 # MySQL
@@ -370,15 +360,15 @@ docker run -d --name joke-api --network joke-net --restart unless-stopped \
   -p 4000:3000 \
   -e DB_TYPE=mysql -e DB_HOST=mysql -e DB_PORT=3306 \
   -e DB_USER=jokeuser -e DB_PASSWORD=jokepassword -e DB_NAME=jokedb \
-  $DOCKER_USER/joke-service:latest
+  $IMAGE_PREFIX/joke-service:latest
 
 # ETL Service
 docker rm -f joke-etl 2>/dev/null || true
 docker run -d --name joke-etl --network joke-net --restart unless-stopped \
   -e DB_TYPE=mysql -e DB_HOST=mysql -e DB_PORT=3306 \
   -e DB_USER=jokeuser -e DB_PASSWORD=jokepassword -e DB_NAME=jokedb \
-  -e RABBITMQ_URL=amqp://guest:guest@$RABBITMQ_IP:5672 \
-  $DOCKER_USER/joke-etl:latest
+  -e RABBITMQ_URL=amqp://<rmq-user>:<rmq-pass>@10.0.1.50:5672 \
+  $IMAGE_PREFIX/joke-etl:latest
 EOF
 ```
 
@@ -386,90 +376,76 @@ EOF
 
 ```bash
 ssh -i $SSH_KEY azureuser@$SUBMIT_IP << EOF
-docker pull $DOCKER_USER/submit-service:latest
+docker pull $IMAGE_PREFIX/submit-service:latest
 mkdir -p /home/azureuser/data
 docker rm -f submit 2>/dev/null || true
 docker run -d --name submit --restart unless-stopped \
   -p 4200:3200 \
   -v /home/azureuser/data:/data \
-  -e RABBITMQ_URL=amqp://guest:guest@$RABBITMQ_IP:5672 \
+  -e RABBITMQ_URL=amqp://<rmq-user>:<rmq-pass>@$RABBITMQ_IP:5672 \
   -e JOKE_SERVICE_URL=http://$JOKE_IP:4000 \
   -e TYPES_CACHE_FILE=/data/types-cache.json \
-  $DOCKER_USER/submit-service:latest
+  $IMAGE_PREFIX/submit-service:latest
 EOF
 ```
 
-### 5.6 - Deploy Moderate Service (Indonesia Central)
+### 5.6 - Deploy Moderate Service with OIDC + RBAC (Indonesia Central)
 
-**Without OIDC:**
 ```bash
 ssh -i $SSH_KEY azureuser@$MODERATE_IP << EOF
-docker pull $DOCKER_USER/moderate-service:latest
+docker pull $IMAGE_PREFIX/moderate-service:latest
 mkdir -p /home/azureuser/data
 docker rm -f moderate 2>/dev/null || true
 docker run -d --name moderate --restart unless-stopped \
   -p 4100:3100 \
   -v /home/azureuser/data:/data \
-  -e RABBITMQ_URL=amqp://guest:guest@$RABBITMQ_IP:5672 \
-  -e TYPES_CACHE_FILE=/data/types-cache.json \
-  $DOCKER_USER/moderate-service:latest
-EOF
-```
-
-**With OIDC (if you set up Auth0):**
-```bash
-ssh -i $SSH_KEY azureuser@$MODERATE_IP << EOF
-docker pull $DOCKER_USER/moderate-service:latest
-mkdir -p /home/azureuser/data
-docker rm -f moderate 2>/dev/null || true
-docker run -d --name moderate --restart unless-stopped \
-  -p 4100:3100 \
-  -v /home/azureuser/data:/data \
-  -e RABBITMQ_URL=amqp://guest:guest@$RABBITMQ_IP:5672 \
+  -e RABBITMQ_URL=amqp://<rmq-user>:<rmq-pass>@$RABBITMQ_IP:5672 \
   -e TYPES_CACHE_FILE=/data/types-cache.json \
   -e OIDC_CLIENT_ID=your-auth0-client-id \
-  -e OIDC_ISSUER=https://your-tenant.eu.auth0.com \
+  -e OIDC_ISSUER=https://your-tenant.us.auth0.com \
   -e OIDC_SECRET=your-auth0-client-secret \
-  -e BASE_URL=http://$KONG_IP/moderate-ui \
-  $DOCKER_USER/moderate-service:latest
+  -e ALLOWED_MODERATORS=email1@example.com,email2@example.com \
+  -e BASE_URL=https://g21266967.duckdns.org \
+  -e POST_LOGIN_REDIRECT=/moderate-ui \
+  $IMAGE_PREFIX/moderate-service:latest
 EOF
 ```
 
-### 5.7 - Deploy Kong Gateway (East Asia)
+### 5.7 - Setup SSL + Deploy Kong Gateway (East Asia)
 
 ```bash
+# Copy and run SSL setup script
+scp -i $SSH_KEY ../services/kong/setup-ssl.sh azureuser@$KONG_IP:/home/azureuser/setup-ssl.sh
+ssh -i $SSH_KEY azureuser@$KONG_IP "chmod +x /home/azureuser/setup-ssl.sh && bash /home/azureuser/setup-ssl.sh"
+
+# Deploy Kong with SSL
 ssh -i $SSH_KEY azureuser@$KONG_IP << EOF
-docker pull $DOCKER_USER/kong-gateway:latest
+docker pull $IMAGE_PREFIX/kong-gateway:latest
 docker rm -f kong 2>/dev/null || true
+DOMAIN="g21266967.duckdns.org"
+CERT_DIR="/etc/letsencrypt/live/\${DOMAIN}"
 docker run -d --name kong --restart unless-stopped \
   -p 80:8000 -p 443:8443 \
-  --add-host=joke:$JOKE_IP \
+  --add-host=joke:10.0.1.20 \
+  --add-host=rabbitmq:10.0.1.50 \
   --add-host=submit:$SUBMIT_IP \
   --add-host=moderate:$MODERATE_IP \
-  --add-host=rabbitmq:$RABBITMQ_IP \
-  $DOCKER_USER/kong-gateway:latest
+  -v /etc/letsencrypt:/etc/letsencrypt:ro \
+  -e KONG_SSL_CERT=\${CERT_DIR}/fullchain.pem \
+  -e KONG_SSL_CERT_KEY=\${CERT_DIR}/privkey.pem \
+  $IMAGE_PREFIX/kong-gateway:latest
 EOF
 ```
 
 ### 5.8 - Verify Deployment
 
-```bash
-echo ""
-echo "=========================================="
-echo "  Deployment Complete!"
-echo "=========================================="
-echo ""
-echo "Access URLs:"
-echo "  Joke UI:     http://$KONG_IP/joke-ui"
-echo "  Submit UI:   http://$KONG_IP/submit-ui"
-echo "  Moderate UI: http://$KONG_IP/moderate-ui"
-echo "  API Docs:    http://$KONG_IP/docs"
-echo "  RabbitMQ:    http://$KONG_IP/rmq"
-echo ""
-
-# Quick health checks
-curl -s http://$KONG_IP/joke-ui | head -5
-curl -s http://$KONG_IP/submit-ui | head -5
+```
+Access URLs (HTTPS):
+  Joke UI:     https://g21266967.duckdns.org/joke-ui
+  Submit UI:   https://g21266967.duckdns.org/submit-ui
+  Moderate UI: https://g21266967.duckdns.org/moderate-ui
+  API Docs:    https://g21266967.duckdns.org/docs
+  RabbitMQ:    https://g21266967.duckdns.org/rmq
 ```
 
 ---
@@ -487,7 +463,7 @@ cd /path/to/Distributed
 git init
 git add .
 git commit -m "Initial commit"
-git remote add origin https://github.com/MONTi200205/co3404-distributed.git
+git remote add origin https://github.com/YOUR_USERNAME/co3404-distributed.git
 git push -u origin main
 ```
 
@@ -499,17 +475,18 @@ Add these one by one:
 
 | Secret Name | Value |
 |-------------|-------|
-| `DOCKER_USERNAME` | Your Docker Hub username |
-| `DOCKER_PASSWORD` | Your Docker Hub access token |
 | `KONG_PUBLIC_IP` | Kong VM public IP |
 | `JOKE_PUBLIC_IP` | Joke VM public IP |
 | `RABBITMQ_PUBLIC_IP` | RabbitMQ VM public IP |
 | `SUBMIT_PUBLIC_IP` | Submit VM public IP |
 | `MODERATE_PUBLIC_IP` | Moderate VM public IP |
 | `SSH_PRIVATE_KEY` | Full contents of `terraform/ssh_key.pem` |
-| `OIDC_CLIENT_ID` | Auth0 Client ID (if using) |
-| `OIDC_ISSUER` | Auth0 Issuer URL (if using) |
-| `OIDC_SECRET` | Auth0 Client Secret (if using) |
+| `RABBITMQ_USER` | RabbitMQ username |
+| `RABBITMQ_PASS` | RabbitMQ password |
+| `OIDC_CLIENT_ID` | Auth0 Client ID |
+| `OIDC_ISSUER` | Auth0 Issuer URL |
+| `OIDC_SECRET` | Auth0 Client Secret |
+| `ALLOWED_MODERATORS` | Comma-separated moderator emails |
 
 ### 6.3 - Trigger the Pipeline
 
@@ -554,21 +531,14 @@ ssh -i ssh_key.pem azureuser@$RABBITMQ_IP "docker logs rabbitmq"
 ssh -i ssh_key.pem azureuser@<VM_IP> "docker restart <container-name>"
 ```
 
-### Redeploy a Single Service
+### Start/Stop All VMs
 
 ```bash
-# Example: redeploy just the submit service
-ssh -i ssh_key.pem azureuser@$SUBMIT_IP << EOF
-docker pull $DOCKER_USER/submit-service:latest
-docker rm -f submit
-docker run -d --name submit --restart unless-stopped \
-  -p 4200:3200 \
-  -v /home/azureuser/data:/data \
-  -e RABBITMQ_URL=amqp://guest:guest@$RABBITMQ_IP:5672 \
-  -e JOKE_SERVICE_URL=http://$JOKE_IP:4000 \
-  -e TYPES_CACHE_FILE=/data/types-cache.json \
-  $DOCKER_USER/submit-service:latest
-EOF
+# Start all VMs (uses start.sh script)
+bash start.sh
+
+# Stop all VMs (uses stop.sh script)
+bash stop.sh
 ```
 
 ### Stop a Service (Resilience Testing)
@@ -592,7 +562,7 @@ terraform destroy
 
 Type `yes` when prompted. This removes ALL resources in BOTH regions.
 
-**IMPORTANT:** Always destroy when not using. VMs cost money even when idle.
+**IMPORTANT:** Always destroy when not using. VMs cost money even when idle. Alternatively, use `stop.sh` to deallocate VMs without destroying infrastructure.
 
 ---
 
@@ -608,5 +578,7 @@ Type `yes` when prompted. This removes ALL resources in BOTH regions.
 | Create Azure infra | `cd terraform && terraform init && terraform apply` |
 | Get all VM IPs | `terraform output vm_public_ips` |
 | SSH to any VM | `ssh -i ssh_key.pem azureuser@<IP>` |
+| Start all VMs | `bash start.sh` |
+| Stop all VMs | `bash stop.sh` |
 | Destroy Azure infra | `terraform destroy` |
 | Push to GitHub | `git add . && git commit -m "msg" && git push` |

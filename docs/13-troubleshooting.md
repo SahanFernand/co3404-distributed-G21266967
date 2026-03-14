@@ -34,11 +34,11 @@
 - Go to Auth0 Dashboard > Applications > Your App > Settings
 - Add the exact callback URL to "Allowed Callback URLs"
 - Must include `/callback` path (e.g., `http://localhost:4100/callback`)
-- For Azure: add both `http://localhost:4100/callback` AND `http://<KONG_IP>/callback`
+- For Azure: add both `http://localhost:4100/callback` AND `https://g21266967.duckdns.org/callback`
 
 **Login loop (keeps redirecting to login)**
 - Check that `BASE_URL` matches the URL you are accessing from
-- If using Kong: `BASE_URL=http://<KONG_IP>/moderate-ui`
+- If using Kong: `BASE_URL=https://g21266967.duckdns.org`
 - If direct access: `BASE_URL=http://localhost:4100`
 
 **Session not persisting**
@@ -55,6 +55,39 @@
 - Verify you are logged in (check `/auth/status`)
 - Ensure your Auth0 application type is "Regular Web Applications"
 
+**403 Forbidden (RBAC)**
+- Your email is not in the `ALLOWED_MODERATORS` list
+- Check the `ALLOWED_MODERATORS` GitHub Secret contains your email (comma-separated)
+- The email check is case-insensitive
+
+---
+
+## HTTPS / SSL
+
+**"Not Secure" warning in browser**
+- SSL certificate may not have been provisioned yet
+- Check that `setup-ssl.sh` ran successfully during deployment
+- Verify certificate exists: `ssh -i ssh_key.pem azureuser@<KONG_IP> "ls /etc/letsencrypt/live/g21266967.duckdns.org/"`
+
+**SSL certificate renewal**
+- Certificates from Let's Encrypt are valid for 90 days
+- The CI/CD pipeline renews on each deployment
+- Manual renewal: SSH to Kong VM and run `sudo certbot renew`
+
+**DuckDNS domain not resolving**
+- Check that the DuckDNS token and domain are correctly configured
+- Verify the IP is updated: `nslookup g21266967.duckdns.org`
+
+---
+
+## Rate Limiting
+
+**Getting 429 Too Many Requests**
+- Kong rate limits all services. Limits per minute:
+  - Joke: 60, Submit: 60, Moderate: 100, RabbitMQ Admin: 50, RabbitMQ Assets: 100
+- Wait 1 minute for the limit to reset
+- The rate limit is per client IP
+
 ---
 
 ## RabbitMQ
@@ -70,7 +103,26 @@
 
 **Management UI not loading**
 - Port 15672 must be exposed: check `docker ps`
-- Default credentials: guest / guest
+- Via Kong: access at `https://g21266967.duckdns.org/rmq`
+- Credentials are stored as GitHub Secrets (not default guest/guest on Azure)
+
+**Management UI assets not loading (blank page)**
+- Kong needs the `rabbitmq-assets` service configured to proxy `/js`, `/css`, `/img`, `/api`
+- Check `kong.yaml` has the `rabbitmq-assets` service entry
+
+---
+
+## Moderation History
+
+**History not showing**
+- Ensure the `/data` volume is mounted on the Moderate VM
+- Check that `moderation-history.json` exists: SSH to Moderate VM and check `/home/azureuser/data/`
+- The History tab requires authentication (must be logged in)
+
+**History data lost**
+- History is stored in `/data/moderation-history.json` on a Docker volume
+- If the container was recreated with `-v` flag, the volume was deleted
+- History is capped at 200 entries (oldest removed automatically)
 
 ---
 
@@ -96,30 +148,33 @@
   ```
 
 **Azure credits running out**
-- Always `terraform destroy` when not using VMs
-- Stop VMs in Azure Portal when pausing work
+- Use `stop.sh` to deallocate VMs when not in use (preserves infrastructure)
+- Use `start.sh` to restart VMs when needed
+- Use `terraform destroy` to remove everything
 
 ---
 
 ## CI/CD Pipeline
 
 **SSH connection refused in pipeline**
-- VMs might not be running. Check Azure Portal.
+- VMs might not be running. Check Azure Portal or run `start.sh`.
 - Verify `KONG_PUBLIC_IP` secret is correct
 - Check `SSH_PRIVATE_KEY` secret contains the full key (including BEGIN/END lines)
 
 **Docker pull fails on VM**
 - VM might still be running cloud-init
 - SSH in and check Docker is installed
-- Verify `DOCKER_USERNAME` secret matches Docker Hub account
+- Images are on GitHub Container Registry (ghcr.io), not Docker Hub
+- The pipeline makes packages public after pushing
 
 **Build job fails**
 - Check that Dockerfiles exist at expected paths
-- Verify `DOCKER_PASSWORD` is a Docker Hub access token (not password)
+- The pipeline uses `GITHUB_TOKEN` for ghcr.io authentication (automatic)
 
 **Deploy job fails**
 - Check that VMs are running and accessible
-- The deploy job uses nested SSH (Kong as jump host) - ensure Kong can reach internal VMs
+- The deploy job SSHs directly to each VM's public IP (no jump host)
+- Check GitHub Secrets for correct VM public IPs
 
 ---
 
@@ -148,5 +203,6 @@
 - Check health endpoint: `curl http://localhost:<port>/health`
 
 **CORS errors in browser**
-- Kong has global CORS configured. If accessing services directly (not through Kong), each service also has `cors()` middleware.
-- Check browser console for the specific CORS error.
+- Kong has CORS restricted to `g21266967.duckdns.org` and the Kong public IP
+- If accessing services directly (not through Kong), each service also has `cors()` middleware
+- Check browser console for the specific CORS error

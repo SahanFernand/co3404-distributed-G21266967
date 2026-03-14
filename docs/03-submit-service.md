@@ -30,7 +30,7 @@ The Submit service provides a web UI and API for users to submit new jokes. Subm
 | `app.js` | Express server, Swagger setup, RabbitMQ connection, ECST subscriber |
 | `public/index.html` | Submit form UI with type selection and new type input |
 | `public/script.js` | Frontend JavaScript - form validation and submission | client side8
-| `public/styles.css` | Dark-themed responsive CSS |
+| `public/styles.css` | Blue-themed responsive CSS with mobile hamburger menu |
 | `Dockerfile` | Docker image |
 | `package.json` | Dependencies: express, cors, amqplib, swagger-jsdoc, swagger-ui-express |
 

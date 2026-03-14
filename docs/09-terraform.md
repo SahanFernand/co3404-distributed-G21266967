@@ -15,7 +15,7 @@ Azure subscription limits restrict the number of VMs per region. This deployment
 | **East Asia** | Kong, Joke (+MySQL+ETL), RabbitMQ | Core data path — DB, message broker, gateway |
 | **Indonesia Central** | Submit, Moderate | UI/interaction services — lighter workload |
 
-All VMs use `Standard_B2ats_v2` (2 vCPUs, 1 GiB memory).
+All VMs use `Standard_B1s` (1 vCPU, 1 GiB memory).
 
 ---
 
@@ -28,7 +28,7 @@ All VMs use `Standard_B2ats_v2` (2 vCPUs, 1 GiB memory).
 | Virtual Network | `jokes-vnet-eastasia` (10.0.0.0/16) | Private network |
 | Subnet | `jokes-subnet-eastasia` (10.0.1.0/24) | VM subnet |
 | NSG | `jokes-nsg-eastasia` | Firewall rules |
-| Kong VM | `kong-vm` (10.0.1.10) + Public IP | API Gateway |
+| Kong VM | `kong-vm` (10.0.1.10) + Public IP | API Gateway + SSL |
 | Joke VM | `joke-vm` (10.0.1.20) + Public IP | Joke + MySQL + ETL |
 | RabbitMQ VM | `rabbitmq-vm` (10.0.1.50) + Public IP | Message broker |
 
@@ -55,7 +55,7 @@ All VMs use `Standard_B2ats_v2` (2 vCPUs, 1 GiB memory).
 Internet
     |
     v
-Kong VM (East Asia - Public IP)  <-- single entry point for users
+Kong VM (East Asia - Public IP)  <-- single entry point (HTTPS via Let's Encrypt)
     |
     +-- jokes-vnet-eastasia (10.0.0.0/16)
     |   +-- jokes-subnet-eastasia (10.0.1.0/24)
@@ -80,15 +80,15 @@ Since VMs are in different Azure regions (different VNets), they **cannot** use 
 
 | From (Region) | To (Region) | Uses |
 |----------------|-------------|------|
-| Kong (EA) → Joke (EA) | Private IP (same VNet) | `10.0.1.20:4000` |
-| Kong (EA) → RabbitMQ (EA) | Private IP (same VNet) | `10.0.1.50:15672` |
-| Kong (EA) → Submit (WUS2) | **Public IP** | `<submit-public-ip>:4200` |
-| Kong (EA) → Moderate (WUS2) | **Public IP** | `<moderate-public-ip>:4100` |
-| Submit (WUS2) → RabbitMQ (EA) | **Public IP** | `<rabbitmq-public-ip>:5672` |
-| Moderate (WUS2) → RabbitMQ (EA) | **Public IP** | `<rabbitmq-public-ip>:5672` |
-| ETL (EA) → RabbitMQ (EA) | Private IP (same VNet) | `10.0.1.50:5672` |
+| Kong (EA) -> Joke (EA) | Private IP (same VNet) | `10.0.1.20:4000` |
+| Kong (EA) -> RabbitMQ (EA) | Private IP (same VNet) | `10.0.1.50:15672` |
+| Kong (EA) -> Submit (IDC) | **Public IP** | `<submit-public-ip>:4200` |
+| Kong (EA) -> Moderate (IDC) | **Public IP** | `<moderate-public-ip>:4100` |
+| Submit (IDC) -> RabbitMQ (EA) | **Public IP** | `<rabbitmq-public-ip>:5672` |
+| Moderate (IDC) -> RabbitMQ (EA) | **Public IP** | `<rabbitmq-public-ip>:5672` |
+| ETL (EA) -> RabbitMQ (EA) | Private IP (same VNet) | `10.0.1.50:5672` |
 
-Kong uses `--add-host` to map service hostnames to the correct public IPs.
+Kong uses `--add-host` to map service hostnames to the correct IPs (private for same-VNet, public for cross-region).
 
 ---
 
@@ -191,20 +191,35 @@ terraform destroy
 # Type 'yes' to confirm
 ```
 
-**IMPORTANT:** Always destroy VMs when not in use to save Azure credits. This destroys resources in BOTH regions.
+**IMPORTANT:** Always destroy VMs when not in use to save Azure credits. This destroys resources in BOTH regions. Alternatively, use `stop.sh` to deallocate VMs without destroying infrastructure.
+
+---
+
+## VM Management Scripts
+
+Instead of `terraform destroy`, you can start/stop VMs to save credits while preserving infrastructure:
+
+```bash
+# Start all VMs across both regions
+bash start.sh
+
+# Stop (deallocate) all VMs across both regions
+bash stop.sh
+```
+
+These scripts use `az vm start` / `az vm deallocate` with `--no-wait` for parallel execution.
 
 ---
 
 ## VM Sizing
 
-| VM | Region | Size | vCPU | RAM | Cost/month |
-|----|--------|------|------|-----|------------|
-| Kong | East Asia | Standard_B2ats_v2 | 2 | 1 GB | ~$9.56 |
-| Joke | East Asia | Standard_B2ats_v2 | 2 | 1 GB | ~$9.56 |
-| RabbitMQ | East Asia | Standard_B2ats_v2 | 2 | 1 GB | ~$9.56 |
-| Submit | Indonesia Central | Standard_B2ats_v2 | 2 | 1 GB | ~$6.86 |
-| Moderate | Indonesia Central | Standard_B2ats_v2 | 2 | 1 GB | ~$6.86 |
-| **Total** | | | | | **~$42.40/month** |
+| VM | Region | Size | vCPU | RAM |
+|----|--------|------|------|-----|
+| Kong | East Asia | Standard_B1s | 1 | 1 GB |
+| Joke | East Asia | Standard_B1s | 1 | 1 GB |
+| RabbitMQ | East Asia | Standard_B1s | 1 | 1 GB |
+| Submit | Indonesia Central | Standard_B1s | 1 | 1 GB |
+| Moderate | Indonesia Central | Standard_B1s | 1 | 1 GB |
 
 ---
 
@@ -220,6 +235,12 @@ terraform destroy
 | 1006 | RabbitMQMgmt | 15672 | Any | Inbound |
 
 Additional rules (1005, 1006) allow cross-region service communication via public IPs.
+
+---
+
+## SSL Certificate Provisioning
+
+The CI/CD pipeline provisions a free Let's Encrypt SSL certificate on the Kong VM using Certbot. This is handled automatically during deployment via `setup-ssl.sh`. The certificate is for `g21266967.duckdns.org` and is mounted into the Kong container.
 
 ---
 
