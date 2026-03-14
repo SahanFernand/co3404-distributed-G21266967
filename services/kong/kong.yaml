@@ -47,6 +47,7 @@ services:
           - /moderated
           - /reject
           - /auth
+          - /history
         strip_path: false
       - name: moderate-oidc
         paths:
