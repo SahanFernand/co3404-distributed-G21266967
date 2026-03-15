@@ -22,3 +22,7 @@ temp/
 
 # Archive
 archive/
+
+# Demo tools
+demo.sh
+docs/12-video-demo-guide.md
