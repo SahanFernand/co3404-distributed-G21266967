@@ -23,10 +23,10 @@ temp/
 # Archive
 archive/
 
-# Claude / AI tools
+# Config
 .claude/
 .CLAUDE.md
-.github/instructions/kluster-code-verify.instructions.md
+.github/instructions/
 
 # Demo tools
 demo.sh
