@@ -23,6 +23,12 @@ temp/
 # Archive
 archive/
 
+# Claude / AI tools
+.claude/
+.CLAUDE.md
+.github/instructions/kluster-code-verify.instructions.md
+
 # Demo tools
 demo.sh
+kong-local.yaml
 docs/12-video-demo-guide.md
