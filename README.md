@@ -109,18 +109,7 @@ OIDC_SECRET=your-secret-min-32-chars
 BASE_URL=https://your-kong-ip/moderate-ui
 ```
 
-## Video Demo Checklist
-
-1. [ ] Show `terraform apply` creating infrastructure
-2. [ ] Run `deploy.sh` script
-3. [ ] Submit a joke → Moderate → View in Joke UI
-4. [ ] Show RabbitMQ queues (submit, moderated)
-5. [ ] Demonstrate type synchronization (ECST pattern)
-6. [ ] Show database switching (MySQL → MongoDB)
-7. [ ] Demonstrate rate limiting (429 after 20 requests)
-8. [ ] Show service resilience (stop one, others work)
-9. [ ] Show OIDC login flow (if configured)
-
 ## Author
 
-CO3404 Distributed Systems Student
+MSS Fernando-G21266967
+
