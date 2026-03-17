@@ -24,8 +24,6 @@ temp/
 archive/
 
 # Config
-.claude/
-.CLAUDE.md
 .github/instructions/
 
 # Demo tools
